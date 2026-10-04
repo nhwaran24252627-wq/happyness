@@ -124,7 +124,6 @@ function sortMedia(a, b) {
   const bNumber =
     happinessNumber(b.name);
 
-
   if (
     aNumber !== Infinity ||
     bNumber !== Infinity
@@ -136,7 +135,6 @@ function sortMedia(a, b) {
       return aNumber - bNumber;
     }
   }
-
 
   return a.name.localeCompare(
     b.name,
@@ -160,16 +158,17 @@ function safeFileName(name) {
 
 
 // ============================================================
-// ASSETS2 VIDEO LIST
+// GET VIDEOS FROM assets2
 // ============================================================
 
 async function getVideos() {
 
   await fsp.mkdir(
     ASSETS2,
-    { recursive: true }
+    {
+      recursive: true
+    }
   );
-
 
   const files =
     await fsp.readdir(
@@ -178,7 +177,6 @@ async function getVideos() {
         withFileTypes: true
       }
     );
-
 
   return files
 
@@ -222,7 +220,6 @@ function sendJson(
   const body =
     JSON.stringify(data);
 
-
   response.writeHead(
     status,
     {
@@ -236,7 +233,6 @@ function sendJson(
         Buffer.byteLength(body)
     }
   );
-
 
   response.end(body);
 }
@@ -260,14 +256,13 @@ function sendText(
     }
   );
 
-
   response.end(text);
 }
 
 
 // ============================================================
 // SEND FILE
-// Supports video streaming/range requests
+// Supports video streaming / range requests
 // ============================================================
 
 async function sendFile(
@@ -277,7 +272,6 @@ async function sendFile(
 ) {
 
   let stats;
-
 
   try {
 
@@ -339,8 +333,7 @@ async function sendFile(
 
 
   // ==========================================================
-  // RANGE REQUEST
-  // Important for video playback
+  // VIDEO RANGE REQUEST
   // ==========================================================
 
   if (range) {
@@ -516,7 +509,7 @@ const server =
       try {
 
         // ----------------------------------------------------
-        // TEST
+        // HEALTH TEST
         // ----------------------------------------------------
 
         if (
@@ -537,7 +530,7 @@ const server =
 
 
         // ----------------------------------------------------
-        // GET ASSETS2 VIDEOS
+        // GET VIDEOS
         // ----------------------------------------------------
 
         if (
@@ -548,20 +541,18 @@ const server =
           const videos =
             await getVideos();
 
-
           sendJson(
             response,
             200,
             videos
           );
 
-
           return;
         }
 
 
         // ----------------------------------------------------
-        // ASSETS2 VIDEO FILE
+        // GET VIDEO FILE
         // ----------------------------------------------------
 
         if (
@@ -600,7 +591,6 @@ const server =
               filename
             )
           );
-
 
           return;
         }
@@ -646,7 +636,6 @@ const server =
               filename
             )
           );
-
 
           return;
         }
@@ -712,6 +701,7 @@ const server =
           response,
           filePath
         );
+
 
       } catch (error) {
 
