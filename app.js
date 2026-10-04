@@ -6,7 +6,6 @@ const errorTemplate = document.getElementById("errorTemplate");
 
 const REQUEST_TIMEOUT_MS = 10000;
 
-
 // ============================================================
 // GOOGLE DRIVE PHOTO API
 // ============================================================
@@ -14,220 +13,206 @@ const REQUEST_TIMEOUT_MS = 10000;
 const GOOGLE_DRIVE_API =
   "https://script.google.com/macros/s/AKfycbzau-6zZkb0X3KM5gqgXKRfHVJi7s4OG2SfkKMSqGYD6L7845LE1KEf9AyYGCpwJDoM/exec";
 
-
 // ============================================================
-// VIDEO FOLDER
+// GITHUB VIDEO SETTINGS
 // ============================================================
 
 const VIDEO_FOLDER = "assets2";
-
 
 // ============================================================
 // STATE
 // ============================================================
 
 let videos = [];
+let muted = false;
 
-let videoObserver = null;
-
+let videoLoadObserver = null;
+let videoVisibilityObserver = null;
 
 // ============================================================
-// VIDEO PLAY BUTTON STYLE
+// VIDEO EXTENSIONS
 // ============================================================
 
-const videoStyle = document.createElement("style");
+const VIDEO_EXTENSIONS = [
+  ".mp4",
+  ".webm",
+  ".mov",
+  ".m4v",
+  ".ogv",
+  ".ogg"
+];
 
-videoStyle.textContent = `
-/* =========================================================
-   CUSTOM VIDEO PLAY BUTTON
-   ========================================================= */
+// ============================================================
+// PERFORMANCE CSS
+// ============================================================
 
-.frame {
-  position: relative;
+function injectVideoStyles() {
+  if (document.getElementById("optimized-video-styles")) {
+    return;
+  }
+
+  const style = document.createElement("style");
+
+  style.id = "optimized-video-styles";
+
+  style.textContent = `
+    .optimized-video {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      cursor: pointer;
+    }
+
+    .custom-video-play {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+
+      width: 72px;
+      height: 72px;
+
+      border: none;
+      border-radius: 50%;
+
+      background: rgba(0, 0, 0, 0.72);
+      color: white;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      font-size: 30px;
+      line-height: 1;
+
+      cursor: pointer;
+
+      z-index: 50;
+
+      opacity: 1;
+      visibility: visible;
+
+      transition:
+        opacity 0.2s ease,
+        transform 0.2s ease;
+    }
+
+    .custom-video-play:hover {
+      transform: translate(-50%, -50%) scale(1.08);
+    }
+
+    .custom-video-play.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .video-loading {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+
+      width: 34px;
+      height: 34px;
+
+      border: 3px solid rgba(255,255,255,0.35);
+      border-top-color: white;
+
+      border-radius: 50%;
+
+      animation: videoSpinner 0.8s linear infinite;
+
+      z-index: 45;
+
+      display: none;
+    }
+
+    .video-loading.show {
+      display: block;
+    }
+
+    @keyframes videoSpinner {
+      to {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
+    }
+
+    .frame {
+      position: relative;
+      contain: layout paint;
+    }
+
+    /* Hide filename captions */
+    .media-label {
+      display: none !important;
+    }
+
+    /* Hide old video badge */
+    .video-badge {
+      display: none !important;
+    }
+
+    /*
+      Reserve a little space for videos before metadata
+      is available. This prevents large layout jumps.
+    */
+    .lazy-video-frame {
+      background: #000;
+    }
+  `;
+
+  document.head.appendChild(style);
 }
-
-
-/* Large play button */
-
-.custom-video-play {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-
-  transform: translate(-50%, -50%);
-
-  width: 78px;
-  height: 78px;
-
-  border: none;
-  border-radius: 50%;
-
-  background: rgba(0, 0, 0, 0.72);
-
-  color: white;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  font-size: 34px;
-  line-height: 1;
-
-  cursor: pointer;
-
-  z-index: 20;
-
-  padding: 0;
-
-  box-shadow:
-    0 5px 25px rgba(0, 0, 0, 0.35);
-
-  transition:
-    transform 0.18s ease,
-    background 0.18s ease,
-    opacity 0.18s ease;
-}
-
-
-.custom-video-play:hover {
-  transform:
-    translate(-50%, -50%)
-    scale(1.08);
-
-  background:
-    rgba(0, 0, 0, 0.85);
-}
-
-
-.custom-video-play:active {
-  transform:
-    translate(-50%, -50%)
-    scale(0.94);
-}
-
-
-/* Keyboard focus */
-
-.custom-video-play:focus-visible {
-  outline:
-    3px solid white;
-
-  outline-offset:
-    4px;
-}
-
-
-/* Hide play button while video is playing */
-
-.custom-video-play.hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-
-/* Video itself */
-
-.frame video {
-  cursor: pointer;
-}
-
-
-/* Remove filename/caption completely */
-
-.media-label {
-  display: none !important;
-}
-
-
-/* Keep video colours original */
-
-.frame video {
-  opacity: 1 !important;
-  filter: none !important;
-}
-`;
-
-document.head.appendChild(videoStyle);
-
 
 // ============================================================
 // GITHUB REPOSITORY DETECTION
 // ============================================================
 
 function getGitHubRepository() {
+  const host = window.location.hostname;
+  const path = window.location.pathname;
 
-  const host =
-    window.location.hostname;
-
-  const path =
-    window.location.pathname;
-
-
-  if (
-    !host.endsWith(".github.io")
-  ) {
-
+  if (!host.endsWith(".github.io")) {
     return null;
-
   }
 
+  const owner = host.split(".")[0];
 
-  const owner =
-    host.split(".")[0];
+  const parts = path
+    .split("/")
+    .filter(Boolean);
 
-
-  const parts =
-    path
-      .split("/")
-      .filter(Boolean);
-
-
-  if (
-    parts.length > 0
-  ) {
-
-    return {
-      owner: owner,
-      repo: parts[0]
-    };
-
+  if (!parts.length) {
+    return null;
   }
-
 
   return {
-    owner: owner,
-    repo: owner + ".github.io"
+    owner,
+    repo: parts[0]
   };
-
 }
-
 
 // ============================================================
 // BASIC HELPERS
 // ============================================================
 
 function setBusy(isBusy) {
-
   gallery.setAttribute(
     "aria-busy",
     String(isBusy)
   );
-
 }
 
-
 function setLoadingState() {
-
   gallery.replaceChildren();
-
 
   const state =
     document.createElement("section");
 
-
   state.className =
     "state-card loading-state";
-
 
   state.innerHTML =
     '<div class="loading-orbit" aria-hidden="true">✦</div>' +
@@ -235,164 +220,116 @@ function setLoadingState() {
     "<h2>Loading memories…</h2>" +
     "<p>Reading the memories.</p>";
 
-
-  gallery.appendChild(
-    state
-  );
-
+  gallery.appendChild(state);
 
   memoryCount.textContent =
     "Preparing memories";
-
 }
 
-
 function showEmptyState() {
-
   gallery.replaceChildren(
     emptyTemplate.content.cloneNode(true)
   );
 
-
   memoryCount.textContent =
     "No memories yet";
-
 }
 
-
 function showError(message) {
-
   const errorState =
     errorTemplate.content.cloneNode(true);
-
 
   const detail =
     errorState.querySelector(
       ".error-detail"
     );
 
-
   if (detail) {
-
-    detail.textContent =
-      message;
-
+    detail.textContent = message;
   }
 
-
-  const retryButton =
+  const retry =
     errorState.querySelector(
       ".retry-button"
     );
 
-
-  if (retryButton) {
-
-    retryButton.addEventListener(
+  if (retry) {
+    retry.addEventListener(
       "click",
       loadMedia
     );
-
   }
 
-
-  gallery.replaceChildren(
-    errorState
-  );
-
+  gallery.replaceChildren(errorState);
 
   memoryCount.textContent =
     "Unable to load";
-
 }
-
 
 function createMediaFallback(
   frame,
   message
 ) {
+  if (
+    frame.querySelector(
+      ".media-fallback"
+    )
+  ) {
+    return;
+  }
 
   const fallback =
     document.createElement("p");
 
-
   fallback.className =
     "media-fallback";
-
 
   fallback.textContent =
     message;
 
-
-  frame.appendChild(
-    fallback
-  );
-
+  frame.appendChild(fallback);
 }
-
 
 function formatCount(count) {
-
   return (
     count +
-    (
-      count === 1
-        ? " memory"
-        : " memories"
-    )
+    (count === 1
+      ? " memory"
+      : " memories")
   );
-
 }
-
 
 // ============================================================
 // SORTING
-// happiness_1 → happiness_15 FIRST
+// happiness_1 ... happiness_15 FIRST
 // ============================================================
 
 function getHappinessNumber(name) {
-
   const match =
     name.match(
       /^happiness_(\d+)/i
     );
 
-
   return match
     ? Number(match[1])
     : Infinity;
-
 }
 
-
 function sortMedia(a, b) {
-
   const aNumber =
     getHappinessNumber(a.name);
 
-
   const bNumber =
     getHappinessNumber(b.name);
-
 
   if (
     aNumber !== Infinity ||
     bNumber !== Infinity
   ) {
-
-    if (
-      aNumber !== bNumber
-    ) {
-
-      return (
-        aNumber -
-        bNumber
-      );
-
+    if (aNumber !== bNumber) {
+      return aNumber - bNumber;
     }
-
   }
-
 
   return a.name.localeCompare(
     b.name,
@@ -402,128 +339,445 @@ function sortMedia(a, b) {
       sensitivity: "base"
     }
   );
-
 }
 
-
 // ============================================================
-// PAUSE ALL OTHER VIDEOS
+// PAUSE ALL VIDEOS EXCEPT ONE
 // ============================================================
 
-function pauseOtherVideos(
-  currentVideo
-) {
-
-  videos.forEach(
-    (video) => {
-
-      if (
-        video !== currentVideo
-      ) {
-
-        if (
-          !video.paused
-        ) {
-
-          video.pause();
-
-        }
-
-      }
-
+function pauseOtherVideos(currentVideo) {
+  videos.forEach(video => {
+    if (
+      video !== currentVideo &&
+      !video.paused
+    ) {
+      video.pause();
     }
-  );
-
+  });
 }
-
 
 // ============================================================
-// SHOW / HIDE PLAY BUTTON
+// UPDATE PLAY BUTTON
 // ============================================================
 
-function showPlayButton(
-  button
-) {
+function showPlayButton(video) {
+  const button =
+    video.parentElement.querySelector(
+      ".custom-video-play"
+    );
 
-  button.classList.remove(
-    "hidden"
-  );
-
+  if (button) {
+    button.classList.remove("hidden");
+  }
 }
 
+function hidePlayButton(video) {
+  const button =
+    video.parentElement.querySelector(
+      ".custom-video-play"
+    );
 
-function hidePlayButton(
-  button
-) {
-
-  button.classList.add(
-    "hidden"
-  );
-
+  if (button) {
+    button.classList.add("hidden");
+  }
 }
 
+// ============================================================
+// LOAD ONE VIDEO
+// ============================================================
+
+function loadVideo(video) {
+  if (!video) {
+    return;
+  }
+
+  if (video.dataset.loaded === "true") {
+    return;
+  }
+
+  const source =
+    video.dataset.src;
+
+  if (!source) {
+    return;
+  }
+
+  video.src = source;
+
+  video.preload = "metadata";
+
+  video.dataset.loaded =
+    "true";
+
+  /*
+    load() tells the browser to start reading
+    the metadata without autoplaying.
+  */
+  try {
+    video.load();
+  } catch (error) {
+    console.warn(
+      "Could not load video:",
+      error
+    );
+  }
+}
+
+// ============================================================
+// UNLOAD ONE VIDEO
+// ============================================================
+
+function unloadVideo(video) {
+  if (!video) {
+    return;
+  }
+
+  /*
+    Never unload a currently playing video.
+  */
+  if (!video.paused) {
+    video.pause();
+  }
+
+  if (
+    video.dataset.loaded !== "true"
+  ) {
+    return;
+  }
+
+  /*
+    Remove source from the video element.
+    This releases network/buffer memory.
+  */
+  video.removeAttribute("src");
+
+  video.load();
+
+  video.dataset.loaded =
+    "false";
+
+  showPlayButton(video);
+}
 
 // ============================================================
 // PLAY VIDEO
 // ============================================================
 
-function playVideo(
-  video,
-  playButton
-) {
-
-  // First stop every other video.
-  pauseOtherVideos(
-    video
-  );
-
-
-  // ----------------------------------------------------------
-  // AUDIO MUST BE ON
-  // ----------------------------------------------------------
-
-  video.muted =
-    false;
-
-  video.defaultMuted =
-    false;
-
-  video.volume =
-    1;
-
-
-  // ----------------------------------------------------------
-  // PLAY ONLY AFTER USER CLICK
-  // ----------------------------------------------------------
-
-  const promise =
-    video.play();
-
-
-  if (
-    promise &&
-    typeof promise.catch === "function"
-  ) {
-
-    promise.catch(
-      (error) => {
-
-        console.warn(
-          "Video could not start:",
-          error
-        );
-
-        showPlayButton(
-          playButton
-        );
-
-      }
-    );
-
+async function playVideo(video) {
+  if (!video) {
+    return;
   }
 
+  /*
+    Make sure this video is loaded first.
+  */
+  loadVideo(video);
+
+  /*
+    Only one video can play.
+  */
+  pauseOtherVideos(video);
+
+  /*
+    Sound ON.
+  */
+  video.muted = false;
+  video.defaultMuted = false;
+  video.volume = 1;
+
+  try {
+    await video.play();
+
+    hidePlayButton(video);
+
+  } catch (error) {
+    console.warn(
+      "Video play failed:",
+      error
+    );
+
+    showPlayButton(video);
+  }
 }
 
+// ============================================================
+// CREATE VIDEO ELEMENT
+// ============================================================
+
+function createVideo(
+  item,
+  frame
+) {
+  const video =
+    document.createElement("video");
+
+  /*
+    IMPORTANT:
+    Do NOT put the real URL into src initially.
+
+    The URL is stored in data-src.
+    This prevents all videos from downloading
+    immediately.
+  */
+  video.dataset.src =
+    item.src;
+
+  video.dataset.loaded =
+    "false";
+
+  video.className =
+    "optimized-video";
+
+  video.loop = true;
+
+  video.playsInline = true;
+
+  video.muted = false;
+
+  video.defaultMuted = false;
+
+  video.volume = 1;
+
+  /*
+    Metadata only after the video is near viewport.
+  */
+  video.preload = "none";
+
+  video.controls = false;
+
+  video.autoplay = false;
+
+  video.removeAttribute(
+    "autoplay"
+  );
+
+  video.setAttribute(
+    "playsinline",
+    ""
+  );
+
+  video.setAttribute(
+    "webkit-playsinline",
+    ""
+  );
+
+  video.setAttribute(
+    "aria-label",
+    item.name
+  );
+
+  // ----------------------------------------------------------
+  // PLAY BUTTON
+  // ----------------------------------------------------------
+
+  const playButton =
+    document.createElement("button");
+
+  playButton.type =
+    "button";
+
+  playButton.className =
+    "custom-video-play";
+
+  playButton.innerHTML =
+    "▶";
+
+  playButton.setAttribute(
+    "aria-label",
+    "Play video"
+  );
+
+  playButton.title =
+    "Play video";
+
+  playButton.addEventListener(
+    "click",
+    event => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      playVideo(video);
+    }
+  );
+
+  // ----------------------------------------------------------
+  // LOADING SPINNER
+  // ----------------------------------------------------------
+
+  const spinner =
+    document.createElement("div");
+
+  spinner.className =
+    "video-loading";
+
+  spinner.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  // ----------------------------------------------------------
+  // METADATA
+  // ----------------------------------------------------------
+
+  video.addEventListener(
+    "loadedmetadata",
+    () => {
+      if (
+        video.videoWidth &&
+        video.videoHeight
+      ) {
+        frame.style.aspectRatio =
+          video.videoWidth +
+          " / " +
+          video.videoHeight;
+      }
+
+      frame.classList.add(
+        "has-media"
+      );
+    }
+  );
+
+  // ----------------------------------------------------------
+  // LOADING
+  // ----------------------------------------------------------
+
+  video.addEventListener(
+    "loadstart",
+    () => {
+      spinner.classList.add(
+        "show"
+      );
+    }
+  );
+
+  video.addEventListener(
+    "loadeddata",
+    () => {
+      spinner.classList.remove(
+        "show"
+      );
+    }
+  );
+
+  video.addEventListener(
+    "canplay",
+    () => {
+      spinner.classList.remove(
+        "show"
+      );
+    }
+  );
+
+  // ----------------------------------------------------------
+  // PLAY
+  // ----------------------------------------------------------
+
+  video.addEventListener(
+    "play",
+    () => {
+      pauseOtherVideos(video);
+      hidePlayButton(video);
+    }
+  );
+
+  video.addEventListener(
+    "playing",
+    () => {
+      spinner.classList.remove(
+        "show"
+      );
+
+      hidePlayButton(video);
+    }
+  );
+
+  // ----------------------------------------------------------
+  // PAUSE
+  // ----------------------------------------------------------
+
+  video.addEventListener(
+    "pause",
+    () => {
+      spinner.classList.remove(
+        "show"
+      );
+
+      showPlayButton(video);
+    }
+  );
+
+  // ----------------------------------------------------------
+  // ENDED
+  // ----------------------------------------------------------
+
+  video.addEventListener(
+    "ended",
+    () => {
+      showPlayButton(video);
+    }
+  );
+
+  // ----------------------------------------------------------
+  // ERROR
+  // ----------------------------------------------------------
+
+  video.addEventListener(
+    "error",
+    () => {
+      spinner.classList.remove(
+        "show"
+      );
+
+      showPlayButton(video);
+
+      /*
+        Only show an error if the browser
+        actually attempted to load the video.
+      */
+      if (
+        video.dataset.loaded ===
+        "true"
+      ) {
+        createMediaFallback(
+          frame,
+          "This video could not be previewed in this browser."
+        );
+      }
+    }
+  );
+
+  // ----------------------------------------------------------
+  // CLICK VIDEO TO PAUSE
+  // ----------------------------------------------------------
+
+  video.addEventListener(
+    "click",
+    () => {
+      if (!video.paused) {
+        video.pause();
+      }
+    }
+  );
+
+  // ----------------------------------------------------------
+  // APPEND
+  // ----------------------------------------------------------
+
+  frame.appendChild(video);
+
+  frame.appendChild(
+    spinner
+  );
+
+  frame.appendChild(
+    playButton
+  );
+
+  videos.push(video);
+
+  return video;
+}
 
 // ============================================================
 // CREATE MEDIA FRAME
@@ -533,549 +787,276 @@ function addMediaFrame(
   item,
   index
 ) {
-
   const section =
     document.createElement("section");
 
-
   section.className =
     "memory";
-
 
   section.style.setProperty(
     "--memory-index",
     index + 1
   );
 
-
   const frame =
     document.createElement("figure");
-
 
   frame.className =
     "frame";
 
-
-  const media =
-    document.createElement(
-      item.type === "video"
-        ? "video"
-        : "img"
-    );
-
-
-  media.src =
-    item.src;
-
-
-  // ==========================================================
-  // VIDEO
-  // ==========================================================
-
   if (
     item.type === "video"
   ) {
-
-    // --------------------------------------------------------
-    // NEVER AUTOPLAY
-    // --------------------------------------------------------
-
-    media.autoplay =
-      false;
-
-
-    media.removeAttribute(
-      "autoplay"
+    frame.classList.add(
+      "lazy-video-frame"
     );
 
-
-    // --------------------------------------------------------
-    // VIDEO SETTINGS
-    // --------------------------------------------------------
-
-    media.controls =
-      false;
-
-
-    media.loop =
-      true;
-
-
-    media.playsInline =
-      true;
-
-
-    media.preload =
-      "metadata";
-
-
-    // --------------------------------------------------------
-    // AUDIO ON
-    // --------------------------------------------------------
-
-    media.muted =
-      false;
-
-
-    media.defaultMuted =
-      false;
-
-
-    media.volume =
-      1;
-
-
-    media.setAttribute(
-      "aria-label",
-      "Video"
+    createVideo(
+      item,
+      frame
     );
-
-
-    // --------------------------------------------------------
-    // CUSTOM PLAY BUTTON
-    // --------------------------------------------------------
-
-    const playButton =
-      document.createElement(
-        "button"
-      );
-
-
-    playButton.type =
-      "button";
-
-
-    playButton.className =
-      "custom-video-play";
-
-
-    playButton.innerHTML =
-      "▶";
-
-
-    playButton.setAttribute(
-      "aria-label",
-      "Play video"
-    );
-
-
-    playButton.title =
-      "Play video";
-
-
-    frame.appendChild(
-      playButton
-    );
-
-
-    // --------------------------------------------------------
-    // PLAY BUTTON CLICK
-    // --------------------------------------------------------
-
-    playButton.addEventListener(
-      "click",
-      (event) => {
-
-        event.preventDefault();
-
-        event.stopPropagation();
-
-
-        // Always make sure audio is ON.
-        media.muted =
-          false;
-
-        media.defaultMuted =
-          false;
-
-        media.volume =
-          1;
-
-
-        playVideo(
-          media,
-          playButton
-        );
-
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // WHEN VIDEO STARTS
-    // --------------------------------------------------------
-
-    media.addEventListener(
-      "play",
-      () => {
-
-        // Pause all other videos.
-        pauseOtherVideos(
-          media
-        );
-
-
-        // Audio ON.
-        media.muted =
-          false;
-
-        media.defaultMuted =
-          false;
-
-        media.volume =
-          1;
-
-
-        // Hide play icon.
-        hidePlayButton(
-          playButton
-        );
-
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // WHILE VIDEO IS ACTUALLY PLAYING
-    // --------------------------------------------------------
-
-    media.addEventListener(
-      "playing",
-      () => {
-
-        media.muted =
-          false;
-
-        media.defaultMuted =
-          false;
-
-        media.volume =
-          1;
-
-
-        hidePlayButton(
-          playButton
-        );
-
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // VIDEO PAUSED
-    // --------------------------------------------------------
-
-    media.addEventListener(
-      "pause",
-      () => {
-
-        showPlayButton(
-          playButton
-        );
-
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // VIDEO ENDED
-    // --------------------------------------------------------
-
-    media.addEventListener(
-      "ended",
-      () => {
-
-        showPlayButton(
-          playButton
-        );
-
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // TAP VIDEO TO PAUSE
-    // --------------------------------------------------------
-
-    media.addEventListener(
-      "click",
-      () => {
-
-        if (
-          !media.paused
-        ) {
-
-          media.pause();
-
-          showPlayButton(
-            playButton
-          );
-
-        }
-
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // VIDEO METADATA
-    // --------------------------------------------------------
-
-    media.addEventListener(
-      "loadedmetadata",
-      () => {
-
-        if (
-          media.videoWidth &&
-          media.videoHeight
-        ) {
-
-          frame.style.aspectRatio =
-            media.videoWidth +
-            " / " +
-            media.videoHeight;
-
-
-          frame.classList.add(
-            "has-media"
-          );
-
-        }
-
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // VIDEO ERROR
-    // --------------------------------------------------------
-
-    media.addEventListener(
-      "error",
-      () => {
-
-        createMediaFallback(
-          frame,
-          "This video could not be previewed in this browser."
-        );
-
-      },
-      {
-        once: true
-      }
-    );
-
-
-    videos.push(
-      media
-    );
-
   }
 
-
-  // ==========================================================
-  // IMAGE
-  // ==========================================================
-
   else {
+    const image =
+      document.createElement("img");
 
-    media.alt =
+    image.src =
+      item.src;
+
+    image.alt =
       item.name;
 
+    image.decoding =
+      "async";
 
-    media.loading =
+    /*
+      Only the first few images load eagerly.
+      Others remain lazy.
+    */
+    image.loading =
       index < 2
         ? "eager"
         : "lazy";
 
-
-    media.decoding =
-      "async";
-
-
-    media.addEventListener(
+    image.addEventListener(
       "load",
       () => {
-
         if (
-          media.naturalWidth &&
-          media.naturalHeight
+          image.naturalWidth &&
+          image.naturalHeight
         ) {
-
           frame.style.aspectRatio =
-            media.naturalWidth +
+            image.naturalWidth +
             " / " +
-            media.naturalHeight;
-
+            image.naturalHeight;
 
           frame.classList.add(
             "has-media"
           );
-
         }
-
       }
     );
 
-
-    media.addEventListener(
+    image.addEventListener(
       "error",
       () => {
-
         createMediaFallback(
           frame,
           "This image could not be previewed."
         );
-
       },
       {
         once: true
       }
     );
 
+    frame.appendChild(
+      image
+    );
   }
 
-
-  // Add image/video.
-  frame.appendChild(
-    media
-  );
-
-
-  // ==========================================================
+  // ----------------------------------------------------------
   // HIDDEN CAPTION
-  // ==========================================================
+  // ----------------------------------------------------------
 
   const caption =
     document.createElement(
       "figcaption"
     );
 
-
   caption.className =
     "media-label";
 
-
-  caption.style.display =
-    "none";
-
-
-  caption.textContent =
+  caption.title =
     item.name;
 
+  const fileName =
+    document.createElement(
+      "span"
+    );
+
+  fileName.textContent =
+    item.name;
+
+  caption.appendChild(
+    fileName
+  );
+
+  const number =
+    document.createElement(
+      "span"
+    );
+
+  number.className =
+    "memory-number";
+
+  number.textContent =
+    String(index + 1)
+      .padStart(2, "0");
+
+  caption.appendChild(
+    number
+  );
 
   frame.appendChild(
     caption
   );
 
-
   section.appendChild(
     frame
   );
 
-
   return section;
-
 }
 
-
 // ============================================================
-// VIDEO SCROLL OBSERVER
+// VIDEO LAZY LOADING
 // ============================================================
 
-function setupVideoObserver() {
-
-  if (
-    videoObserver
-  ) {
-
-    videoObserver.disconnect();
-
+function setupVideoObservers() {
+  /*
+    Destroy old observers.
+  */
+  if (videoLoadObserver) {
+    videoLoadObserver.disconnect();
   }
 
+  if (videoVisibilityObserver) {
+    videoVisibilityObserver.disconnect();
+  }
 
-  if (
-    !videos.length
-  ) {
-
+  if (!videos.length) {
     return;
-
   }
 
+  // ----------------------------------------------------------
+  // LOAD VIDEOS NEAR SCREEN
+  // ----------------------------------------------------------
 
-  videoObserver =
+  videoLoadObserver =
     new IntersectionObserver(
-
-      (entries) => {
-
+      entries => {
         entries.forEach(
-          (entry) => {
-
+          entry => {
             const video =
               entry.target;
 
-
-            // ------------------------------------------------
-            // IMPORTANT:
-            // NEVER PLAY HERE.
-            //
-            // Only pause when video leaves screen.
-            // ------------------------------------------------
-
             if (
-              !entry.isIntersecting ||
-              entry.intersectionRatio < 0.25
+              entry.isIntersecting
             ) {
-
-              if (
-                !video.paused
-              ) {
-
-                video.pause();
-
-              }
-
+              /*
+                Load only when within
+                approximately 2 screens.
+              */
+              loadVideo(video);
             }
-
           }
         );
-
       },
-
       {
-        threshold: [
-          0,
-          0.25,
-          0.65,
-          1
-        ]
-      }
+        root: null,
 
+        /*
+          Start loading before the
+          user reaches the video.
+        */
+        rootMargin:
+          "1500px 0px 1500px 0px",
+
+        threshold: 0
+      }
     );
 
+  // ----------------------------------------------------------
+  // PAUSE / UNLOAD FAR VIDEOS
+  // ----------------------------------------------------------
+
+  videoVisibilityObserver =
+    new IntersectionObserver(
+      entries => {
+        entries.forEach(
+          entry => {
+            const video =
+              entry.target;
+
+            if (
+              entry.isIntersecting
+            ) {
+              /*
+                Video is near the
+                visible area.
+              */
+              loadVideo(video);
+            }
+
+            else {
+              /*
+                Do not keep videos
+                playing while scrolling.
+              */
+              if (!video.paused) {
+                video.pause();
+              }
+            }
+          }
+        );
+      },
+      {
+        root: null,
+
+        /*
+          Video is considered
+          "nearby" within about
+          one viewport.
+        */
+        rootMargin:
+          "800px 0px 800px 0px",
+
+        threshold: 0.01
+      }
+    );
 
   videos.forEach(
-    (video) => {
-
-      videoObserver.observe(
+    video => {
+      videoLoadObserver.observe(
         video
       );
 
+      videoVisibilityObserver.observe(
+        video
+      );
     }
   );
-
 }
 
-
 // ============================================================
-// GOOGLE DRIVE PHOTOS
+// LOAD GOOGLE DRIVE PHOTOS
 // ============================================================
 
 async function fetchDrivePhotos() {
-
   const controller =
     new AbortController();
-
 
   const timeout =
     window.setTimeout(
@@ -1084,9 +1065,7 @@ async function fetchDrivePhotos() {
       REQUEST_TIMEOUT_MS
     );
 
-
   try {
-
     const response =
       await fetch(
         GOOGLE_DRIVE_API,
@@ -1097,53 +1076,43 @@ async function fetchDrivePhotos() {
         }
       );
 
-
-    if (
-      !response.ok
-    ) {
-
+    if (!response.ok) {
       throw new Error(
         "Google Drive API returned HTTP " +
         response.status
       );
-
     }
-
 
     const media =
       await response.json();
 
-
     if (
       !Array.isArray(media)
     ) {
-
       throw new Error(
         "Google Drive API returned invalid data."
       );
-
     }
 
-
     return media
-
       .filter(
         item =>
-          item.type === "image"
+          item.type ===
+          "image"
       )
-
       .map(
         item => {
-
-          if (
-            item.src
-          ) {
-
+          /*
+            If Apps Script already
+            provides src, use it.
+          */
+          if (item.src) {
             return item;
-
           }
 
-
+          /*
+            Otherwise use Drive thumbnail.
+          */
           return {
             ...item,
 
@@ -1153,136 +1122,91 @@ async function fetchDrivePhotos() {
                 item.id
               ) +
               "&sz=w2000"
-
           };
-
         }
       );
-
   }
 
   finally {
-
     window.clearTimeout(
       timeout
     );
-
   }
-
 }
 
-
 // ============================================================
-// LOCALHOST VIDEOS
-// ============================================================
-
-async function fetchLocalVideos() {
-
-  const controller =
-    new AbortController();
-
-
-  const timeout =
-    window.setTimeout(
-      () =>
-        controller.abort(),
-      REQUEST_TIMEOUT_MS
-    );
-
-
-  try {
-
-    const response =
-      await fetch(
-        "/api/videos",
-        {
-          cache: "no-store",
-          signal:
-            controller.signal
-        }
-      );
-
-
-    if (
-      !response.ok
-    ) {
-
-      throw new Error(
-        "Local video server returned HTTP " +
-        response.status
-      );
-
-    }
-
-
-    const files =
-      await response.json();
-
-
-    if (
-      !Array.isArray(files)
-    ) {
-
-      return [];
-
-    }
-
-
-    return files
-
-      .filter(
-        file =>
-          file &&
-          file.type === "video" &&
-          file.src
-      )
-
-      .map(
-        file => ({
-
-          name:
-            file.name,
-
-          type:
-            "video",
-
-          src:
-            file.src
-
-        })
-      );
-
-  }
-
-  finally {
-
-    window.clearTimeout(
-      timeout
-    );
-
-  }
-
-}
-
-
-// ============================================================
-// GITHUB VIDEOS
+// LOAD GITHUB ASSETS2 VIDEOS
 // ============================================================
 
 async function fetchGitHubVideos() {
-
   const repository =
     getGitHubRepository();
 
+  /*
+    When running locally, use
+    the local Node server.
+  */
+  if (!repository) {
+    try {
+      const response =
+        await fetch(
+          "/api/videos",
+          {
+            cache:
+              "no-store"
+          }
+        );
 
-  if (
-    !repository
-  ) {
+      if (!response.ok) {
+        throw new Error(
+          "Local video API returned HTTP " +
+          response.status
+        );
+      }
 
-    return [];
+      const files =
+        await response.json();
 
+      if (
+        !Array.isArray(files)
+      ) {
+        return [];
+      }
+
+      return files
+        .filter(
+          file =>
+            file &&
+            file.type ===
+              "video"
+        )
+        .map(
+          file => ({
+            name:
+              file.name,
+
+            type:
+              "video",
+
+            src:
+              file.src
+          })
+        );
+    }
+
+    catch (error) {
+      console.error(
+        "Local videos failed:",
+        error
+      );
+
+      return [];
+    }
   }
 
+  // ----------------------------------------------------------
+  // GITHUB PAGES
+  // ----------------------------------------------------------
 
   const apiURL =
     "https://api.github.com/repos/" +
@@ -1296,10 +1220,8 @@ async function fetchGitHubVideos() {
     "/contents/" +
     VIDEO_FOLDER;
 
-
   const controller =
     new AbortController();
-
 
   const timeout =
     window.setTimeout(
@@ -1308,15 +1230,13 @@ async function fetchGitHubVideos() {
       REQUEST_TIMEOUT_MS
     );
 
-
   try {
-
     const response =
       await fetch(
         apiURL,
         {
           headers: {
-            "Accept":
+            Accept:
               "application/vnd.github+json"
           },
 
@@ -1328,65 +1248,45 @@ async function fetchGitHubVideos() {
         }
       );
 
-
-    if (
-      !response.ok
-    ) {
-
+    if (!response.ok) {
       throw new Error(
         "GitHub returned HTTP " +
         response.status
       );
-
     }
-
 
     const files =
       await response.json();
 
-
     if (
       !Array.isArray(files)
     ) {
-
       return [];
-
     }
 
-
     return files
-
       .filter(
         file => {
-
           if (
-            file.type !== "file"
+            file.type !==
+            "file"
           ) {
-
             return false;
-
           }
-
 
           const name =
             file.name.toLowerCase();
 
-
-          return (
-            name.endsWith(".mp4") ||
-            name.endsWith(".webm") ||
-            name.endsWith(".mov") ||
-            name.endsWith(".m4v") ||
-            name.endsWith(".ogv") ||
-            name.endsWith(".ogg")
+          return VIDEO_EXTENSIONS.some(
+            extension =>
+              name.endsWith(
+                extension
+              )
           );
-
         }
       )
-
       .map(
         file => ({
-
           name:
             file.name,
 
@@ -1399,245 +1299,212 @@ async function fetchGitHubVideos() {
             encodeURIComponent(
               file.name
             )
-
         })
       );
-
   }
 
   finally {
-
     window.clearTimeout(
       timeout
     );
-
   }
-
 }
-
-
-// ============================================================
-// SELECT VIDEO SOURCE
-// ============================================================
-
-async function fetchVideos() {
-
-  // LOCALHOST
-  if (
-    !window.location.hostname.endsWith(
-      ".github.io"
-    )
-  ) {
-
-    return await fetchLocalVideos();
-
-  }
-
-
-  // GITHUB PAGES
-  return await fetchGitHubVideos();
-
-}
-
 
 // ============================================================
 // LOAD ALL MEDIA
 // ============================================================
 
 async function fetchMedia() {
-
   const results =
     await Promise.allSettled([
-
       fetchDrivePhotos(),
-
-      fetchVideos()
-
+      fetchGitHubVideos()
     ]);
 
-
   const photos =
-    results[0].status === "fulfilled"
+    results[0].status ===
+    "fulfilled"
       ? results[0].value
       : [];
 
-
-  const videosFromServer =
-    results[1].status === "fulfilled"
+  const githubVideos =
+    results[1].status ===
+    "fulfilled"
       ? results[1].value
       : [];
 
-
   if (
-    results[0].status === "rejected"
+    results[0].status ===
+    "rejected"
   ) {
-
     console.error(
       "Google Drive photos failed:",
       results[0].reason
     );
-
   }
 
-
   if (
-    results[1].status === "rejected"
+    results[1].status ===
+    "rejected"
   ) {
-
     console.error(
       "Videos failed:",
       results[1].reason
     );
-
   }
 
-
   const allMedia = [
-
     ...photos,
-
-    ...videosFromServer
-
+    ...githubVideos
   ];
-
 
   allMedia.sort(
     sortMedia
   );
 
-
   return allMedia;
-
 }
-
 
 // ============================================================
 // LOAD PAGE
 // ============================================================
 
 async function loadMedia() {
-
-  if (
-    videoObserver
-  ) {
-
-    videoObserver.disconnect();
-
+  /*
+    Clean up old observers.
+  */
+  if (videoLoadObserver) {
+    videoLoadObserver.disconnect();
   }
 
+  if (videoVisibilityObserver) {
+    videoVisibilityObserver.disconnect();
+  }
 
-  // Stop existing videos.
+  /*
+    Stop existing videos.
+  */
   videos.forEach(
-    (video) => {
-
-      video.pause();
-
+    video => {
+      try {
+        video.pause();
+      } catch {}
     }
   );
 
-
   videos = [];
-
 
   setBusy(true);
 
-
   setLoadingState();
 
-
   try {
-
     const media =
       await fetchMedia();
 
-
-    if (
-      !media.length
-    ) {
-
+    if (!media.length) {
       showEmptyState();
-
       return;
-
     }
-
 
     const memories =
       document.createDocumentFragment();
 
-
     media.forEach(
       (item, index) => {
-
         memories.appendChild(
           addMediaFrame(
             item,
             index
           )
         );
-
       }
     );
-
 
     gallery.replaceChildren(
       memories
     );
-
 
     memoryCount.textContent =
       formatCount(
         media.length
       );
 
-
-    setupVideoObserver();
-
+    /*
+      Now start the lazy-loading
+      observers.
+    */
+    setupVideoObservers();
   }
 
   catch (error) {
-
-    showError(
-      "Could not load the memories. " +
-      error.message
-    );
-
-
     console.error(
       "Unable to load gallery media:",
       error
     );
 
+    showError(
+      "Could not load the memories. " +
+      error.message
+    );
   }
 
   finally {
-
     setBusy(false);
-
   }
-
 }
 
-
 // ============================================================
-// DISABLE OLD GLOBAL MUTE BEHAVIOUR
+// MUTE / UNMUTE
 // ============================================================
 
-if (
-  muteAll
-) {
+if (muteAll) {
+  muteAll.addEventListener(
+    "click",
+    () => {
+      muted = !muted;
 
-  // Hide the old global mute button because
-  // videos must always start with audio ON.
+      videos.forEach(
+        video => {
+          video.muted =
+            muted;
 
-  muteAll.style.display =
-    "none";
+          video.defaultMuted =
+            muted;
+        }
+      );
 
+      const icon =
+        muteAll.querySelector(
+          "span"
+        );
+
+      if (icon) {
+        icon.textContent =
+          muted
+            ? "🔇"
+            : "🔊";
+      }
+
+      muteAll.setAttribute(
+        "aria-label",
+        muted
+          ? "Unmute videos"
+          : "Mute videos"
+      );
+
+      muteAll.title =
+        muted
+          ? "Unmute videos"
+          : "Mute videos";
+    }
+  );
 }
-
 
 // ============================================================
 // START
 // ============================================================
+
+injectVideoStyles();
 
 loadMedia();
