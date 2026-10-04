@@ -1,24 +1,14 @@
-const gallery =
-  document.getElementById("gallery");
+const gallery = document.getElementById("gallery");
+const memoryCount = document.getElementById("memoryCount");
+const muteAll = document.getElementById("muteAll");
+const emptyTemplate = document.getElementById("emptyTemplate");
+const errorTemplate = document.getElementById("errorTemplate");
 
-const memoryCount =
-  document.getElementById("memoryCount");
-
-const muteAll =
-  document.getElementById("muteAll");
-
-const emptyTemplate =
-  document.getElementById("emptyTemplate");
-
-const errorTemplate =
-  document.getElementById("errorTemplate");
-
-
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 10000;
 
 
 // ============================================================
-// GOOGLE DRIVE
+// GOOGLE DRIVE PHOTO API
 // ============================================================
 
 const GOOGLE_DRIVE_API =
@@ -26,45 +16,87 @@ const GOOGLE_DRIVE_API =
 
 
 // ============================================================
-// VIDEO FOLDER
+// VIDEO SETTINGS
 // ============================================================
 
-const VIDEO_FOLDER =
-  "assets2";
+const VIDEO_FOLDER = "assets2";
 
 
 // ============================================================
 // STATE
 // ============================================================
 
-let videos = [];
+// IMPORTANT:
+// Sound is ON by default.
+let muted = false;
 
-let muted = true;
+let videos = [];
 
 let videoObserver = null;
 
 
 // ============================================================
-// BASIC HELPERS
+// DETECT GITHUB PAGES
 // ============================================================
 
-function setBusy(value) {
+function getGitHubRepository() {
 
-  gallery.setAttribute(
-    "aria-busy",
-    String(value)
-  );
+  const host =
+    window.location.hostname;
+
+  const path =
+    window.location.pathname;
+
+
+  if (!host.endsWith(".github.io")) {
+
+    return null;
+
+  }
+
+
+  const owner =
+    host.split(".")[0];
+
+  const parts =
+    path
+      .split("/")
+      .filter(Boolean);
+
+
+  // Project Pages
+  // username.github.io/repository/
+  if (parts.length > 0) {
+
+    return {
+      owner: owner,
+      repo: parts[0]
+    };
+
+  }
+
+
+  // User Pages
+  // username.github.io
+  return {
+    owner: owner,
+    repo: owner + ".github.io"
+  };
+
 }
 
 
-function formatCount(count) {
+// ============================================================
+// HELPERS
+// ============================================================
 
-  return (
-    count +
-    (count === 1
-      ? " memory"
-      : " memories")
+function setBusy(isBusy) {
+
+  gallery.setAttribute(
+    "aria-busy",
+    String(isBusy)
   );
+
 }
 
 
@@ -72,13 +104,13 @@ function setLoadingState() {
 
   gallery.replaceChildren();
 
+
   const state =
-    document.createElement(
-      "section"
-    );
+    document.createElement("section");
 
   state.className =
     "state-card loading-state";
+
 
   state.innerHTML =
     '<div class="loading-orbit" aria-hidden="true">✦</div>' +
@@ -86,54 +118,58 @@ function setLoadingState() {
     "<h2>Loading memories…</h2>" +
     "<p>Reading the memories.</p>";
 
-  gallery.appendChild(
-    state
-  );
+
+  gallery.appendChild(state);
+
 
   memoryCount.textContent =
     "Preparing memories";
+
 }
 
 
 function showEmptyState() {
 
   gallery.replaceChildren(
-    emptyTemplate.content.cloneNode(
-      true
-    )
+    emptyTemplate.content.cloneNode(true)
   );
+
 
   memoryCount.textContent =
     "No memories yet";
+
 }
 
 
 function showError(message) {
 
   const errorState =
-    errorTemplate.content.cloneNode(
-      true
-    );
+    errorTemplate.content.cloneNode(true);
+
 
   const detail =
     errorState.querySelector(
       ".error-detail"
     );
 
+
   if (detail) {
+
     detail.textContent =
       message;
+
   }
 
 
-  const retry =
+  const retryButton =
     errorState.querySelector(
       ".retry-button"
     );
 
-  if (retry) {
 
-    retry.addEventListener(
+  if (retryButton) {
+
+    retryButton.addEventListener(
       "click",
       loadMedia
     );
@@ -145,38 +181,69 @@ function showError(message) {
     errorState
   );
 
+
   memoryCount.textContent =
     "Unable to load";
+
+}
+
+
+function createMediaFallback(
+  frame,
+  message
+) {
+
+  const fallback =
+    document.createElement("p");
+
+
+  fallback.className =
+    "media-fallback";
+
+
+  fallback.textContent =
+    message;
+
+
+  frame.appendChild(
+    fallback
+  );
+
+}
+
+
+function formatCount(count) {
+
+  return (
+    count +
+    (
+      count === 1
+        ? " memory"
+        : " memories"
+    )
+  );
+
 }
 
 
 // ============================================================
 // SORTING
 // happiness_1 → happiness_15 FIRST
+// everything else AFTER
 // ============================================================
 
 function getHappinessNumber(name) {
 
   const match =
     name.match(
-      /^happiness[_ -]?0*(\d+)/i
+      /^happiness_(\d+)/i
     );
 
-  if (!match) {
-    return Infinity;
-  }
 
-  const number =
-    Number(match[1]);
+  return match
+    ? Number(match[1])
+    : Infinity;
 
-  if (
-    number >= 1 &&
-    number <= 15
-  ) {
-    return number;
-  }
-
-  return Infinity;
 }
 
 
@@ -204,6 +271,7 @@ function sortMedia(a, b) {
       );
 
     }
+
   }
 
 
@@ -215,6 +283,31 @@ function sortMedia(a, b) {
       sensitivity: "base"
     }
   );
+
+}
+
+
+// ============================================================
+// PAUSE ALL OTHER VIDEOS
+// ============================================================
+
+function pauseOtherVideos(currentVideo) {
+
+  videos.forEach(
+    (video) => {
+
+      if (
+        video !== currentVideo &&
+        !video.paused
+      ) {
+
+        video.pause();
+
+      }
+
+    }
+  );
+
 }
 
 
@@ -228,12 +321,12 @@ function addMediaFrame(
 ) {
 
   const section =
-    document.createElement(
-      "section"
-    );
+    document.createElement("section");
+
 
   section.className =
     "memory";
+
 
   section.style.setProperty(
     "--memory-index",
@@ -242,9 +335,8 @@ function addMediaFrame(
 
 
   const frame =
-    document.createElement(
-      "figure"
-    );
+    document.createElement("figure");
+
 
   frame.className =
     "frame";
@@ -270,28 +362,91 @@ function addMediaFrame(
     item.type === "video"
   ) {
 
-    media.loop = true;
+    // Native browser controls.
+    // This gives the user:
+    // ▶ Play
+    // ⏸ Pause
+    // 🔊 Volume
+    // Fullscreen
+    media.controls = true;
 
-    media.muted =
-      muted;
+
+    // Sound ON by default.
+    media.muted = false;
+
+
+    media.defaultMuted = false;
+
 
     media.playsInline =
       true;
 
-    media.controls =
+
+    // Do NOT autoplay.
+    media.autoplay =
       false;
 
+
+    // Prevent endless background loading.
     media.preload =
-      index < 2
-        ? "auto"
-        : "metadata";
+      "metadata";
+
+
+    media.loop =
+      true;
 
 
     media.setAttribute(
       "aria-label",
-      item.name
+      "Video"
     );
 
+
+    // --------------------------------------------------------
+    // WHEN THIS VIDEO STARTS PLAYING
+    // PAUSE EVERY OTHER VIDEO
+    // --------------------------------------------------------
+
+    media.addEventListener(
+      "play",
+      () => {
+
+        // Always keep sound enabled.
+        media.muted =
+          false;
+
+
+        media.defaultMuted =
+          false;
+
+
+        pauseOtherVideos(
+          media
+        );
+
+      }
+    );
+
+
+    // --------------------------------------------------------
+    // USER PRESSES PLAY
+    // MAKE SURE SOUND IS ON
+    // --------------------------------------------------------
+
+    media.addEventListener(
+      "playing",
+      () => {
+
+        media.muted =
+          false;
+
+      }
+    );
+
+
+    // --------------------------------------------------------
+    // VIDEO METADATA
+    // --------------------------------------------------------
 
     media.addEventListener(
       "loadedmetadata",
@@ -307,39 +462,28 @@ function addMediaFrame(
             " / " +
             media.videoHeight;
 
+
           frame.classList.add(
             "has-media"
           );
+
         }
 
       }
     );
 
 
-    media.addEventListener(
-      "canplay",
-      () => {
-
-        frame.classList.add(
-          "has-media"
-        );
-
-      }
-    );
-
+    // --------------------------------------------------------
+    // VIDEO ERROR
+    // --------------------------------------------------------
 
     media.addEventListener(
       "error",
       () => {
 
-        console.error(
-          "Video failed:",
-          item.src,
-          media.error
-        );
-
-        frame.classList.add(
-          "media-error"
+        createMediaFallback(
+          frame,
+          "This video could not be previewed in this browser."
         );
 
       },
@@ -354,6 +498,25 @@ function addMediaFrame(
     );
 
 
+    // Small video indicator.
+    const badge =
+      document.createElement(
+        "span"
+      );
+
+
+    badge.className =
+      "video-badge";
+
+
+    badge.textContent =
+      "Video";
+
+
+    frame.appendChild(
+      badge
+    );
+
   }
 
 
@@ -366,10 +529,12 @@ function addMediaFrame(
     media.alt =
       item.name;
 
+
     media.loading =
       index < 2
         ? "eager"
         : "lazy";
+
 
     media.decoding =
       "async";
@@ -389,6 +554,7 @@ function addMediaFrame(
             " / " +
             media.naturalHeight;
 
+
           frame.classList.add(
             "has-media"
           );
@@ -403,9 +569,9 @@ function addMediaFrame(
       "error",
       () => {
 
-        console.error(
-          "Image failed:",
-          item.src
+        createMediaFallback(
+          frame,
+          "This image could not be previewed."
         );
 
       },
@@ -423,8 +589,66 @@ function addMediaFrame(
 
 
   // ==========================================================
-  // DO NOT SHOW FILE NAMES
+  // CAPTION
   // ==========================================================
+
+  const caption =
+    document.createElement(
+      "figcaption"
+    );
+
+
+  caption.className =
+    "media-label";
+
+
+  caption.title =
+    item.name;
+
+
+  const fileName =
+    document.createElement(
+      "span"
+    );
+
+
+  fileName.textContent =
+    item.name;
+
+
+  caption.appendChild(
+    fileName
+  );
+
+
+  const number =
+    document.createElement(
+      "span"
+    );
+
+
+  number.className =
+    "memory-number";
+
+
+  number.textContent =
+    String(
+      index + 1
+    ).padStart(
+      2,
+      "0"
+    );
+
+
+  caption.appendChild(
+    number
+  );
+
+
+  frame.appendChild(
+    caption
+  );
+
 
   section.appendChild(
     frame
@@ -432,24 +656,31 @@ function addMediaFrame(
 
 
   return section;
+
 }
 
 
 // ============================================================
-// VIDEO AUTOPLAY
+// VIDEO SCROLL BEHAVIOUR
 // ============================================================
 
 function setupVideoObserver() {
 
-  if (videoObserver) {
+  if (
+    videoObserver
+  ) {
 
     videoObserver.disconnect();
 
   }
 
 
-  if (!videos.length) {
+  if (
+    !videos.length
+  ) {
+
     return;
+
   }
 
 
@@ -465,20 +696,26 @@ function setupVideoObserver() {
               entry.target;
 
 
+            // ------------------------------------------------
+            // IMPORTANT:
+            // We DO NOT autoplay videos anymore.
+            //
+            // We only pause videos when they leave view.
+            // This prevents multiple videos from playing.
+            // ------------------------------------------------
+
             if (
-              entry.isIntersecting &&
-              entry.intersectionRatio >= 0.65
+              !entry.isIntersecting ||
+              entry.intersectionRatio < 0.25
             ) {
 
-              video
-                .play()
-                .catch(
-                  () => {}
-                );
+              if (
+                !video.paused
+              ) {
 
-            } else {
+                video.pause();
 
-              video.pause();
+              }
 
             }
 
@@ -490,6 +727,7 @@ function setupVideoObserver() {
       {
         threshold: [
           0,
+          0.25,
           0.65,
           1
         ]
@@ -507,6 +745,7 @@ function setupVideoObserver() {
 
     }
   );
+
 }
 
 
@@ -535,12 +774,15 @@ async function fetchDrivePhotos() {
         GOOGLE_DRIVE_API,
         {
           cache: "no-store",
-          signal: controller.signal
+          signal:
+            controller.signal
         }
       );
 
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
 
       throw new Error(
         "Google Drive API returned HTTP " +
@@ -575,13 +817,16 @@ async function fetchDrivePhotos() {
       .map(
         item => {
 
-          if (item.src) {
+          if (
+            item.src
+          ) {
+
             return item;
+
           }
 
 
           return {
-
             ...item,
 
             src:
@@ -596,125 +841,125 @@ async function fetchDrivePhotos() {
         }
       );
 
+  }
 
-  } finally {
+  finally {
 
     window.clearTimeout(
       timeout
     );
 
   }
+
 }
 
 
 // ============================================================
-// GET GITHUB PAGE INFORMATION
-// ============================================================
-
-function getGitHubPageInfo() {
-
-  const host =
-    window.location.hostname;
-
-
-  if (
-    !host.endsWith(
-      ".github.io"
-    )
-  ) {
-
-    return null;
-
-  }
-
-
-  const owner =
-    host.split(".")[0];
-
-
-  const parts =
-    window.location.pathname
-      .split("/")
-      .filter(Boolean);
-
-
-  let basePath = "";
-
-
-  // Project GitHub Pages
-  //
-  // username.github.io/repository/
-  //
-
-  if (parts.length > 0) {
-
-    basePath =
-      "/" +
-      parts[0];
-
-  }
-
-
-  return {
-    owner,
-    basePath
-  };
-}
-
-
-// ============================================================
-// LOAD VIDEOS FROM LOCAL assets2
+// LOAD LOCAL VIDEOS
 // ============================================================
 
 async function fetchLocalVideos() {
 
-  const response =
-    await fetch(
-      "/api/videos",
-      {
-        cache: "no-store"
-      }
+  const controller =
+    new AbortController();
+
+
+  const timeout =
+    window.setTimeout(
+      () =>
+        controller.abort(),
+      REQUEST_TIMEOUT_MS
     );
 
 
-  if (!response.ok) {
+  try {
 
-    throw new Error(
-      "Local video API returned HTTP " +
-      response.status
+    const response =
+      await fetch(
+        "/api/videos",
+        {
+          cache: "no-store",
+          signal:
+            controller.signal
+        }
+      );
+
+
+    if (
+      !response.ok
+    ) {
+
+      throw new Error(
+        "Local video server returned HTTP " +
+        response.status
+      );
+
+    }
+
+
+    const files =
+      await response.json();
+
+
+    if (
+      !Array.isArray(files)
+    ) {
+
+      return [];
+
+    }
+
+
+    return files
+
+      .filter(
+        file =>
+          file &&
+          file.type === "video" &&
+          file.src
+      )
+
+      .map(
+        file => ({
+
+          name:
+            file.name,
+
+          type:
+            "video",
+
+          src:
+            file.src
+
+        })
+      );
+
+  }
+
+  finally {
+
+    window.clearTimeout(
+      timeout
     );
 
   }
 
-
-  const data =
-    await response.json();
-
-
-  if (!Array.isArray(data)) {
-
-    throw new Error(
-      "Local video API returned invalid data."
-    );
-
-  }
-
-
-  return data;
 }
 
 
 // ============================================================
-// LOAD VIDEOS FROM GITHUB PAGES
+// LOAD GITHUB ASSETS2 VIDEOS
 // ============================================================
 
 async function fetchGitHubVideos() {
 
-  const pageInfo =
-    getGitHubPageInfo();
+  const repository =
+    getGitHubRepository();
 
 
-  if (!pageInfo) {
+  if (
+    !repository
+  ) {
 
     return [];
 
@@ -724,86 +969,105 @@ async function fetchGitHubVideos() {
   const apiURL =
     "https://api.github.com/repos/" +
     encodeURIComponent(
-      pageInfo.owner
+      repository.owner
     ) +
     "/" +
     encodeURIComponent(
-      getRepositoryName(pageInfo)
+      repository.repo
     ) +
     "/contents/" +
     VIDEO_FOLDER;
 
 
-  const response =
-    await fetch(
-      apiURL,
-      {
-        headers: {
-          "Accept":
-            "application/vnd.github+json"
-        },
+  const controller =
+    new AbortController();
 
-        cache: "no-store"
-      }
+
+  const timeout =
+    window.setTimeout(
+      () =>
+        controller.abort(),
+      REQUEST_TIMEOUT_MS
     );
 
 
-  if (!response.ok) {
+  try {
 
-    throw new Error(
-      "GitHub returned HTTP " +
-      response.status
-    );
+    const response =
+      await fetch(
+        apiURL,
+        {
+          headers: {
+            "Accept":
+              "application/vnd.github+json"
+          },
 
-  }
+          cache:
+            "no-store",
+
+          signal:
+            controller.signal
+        }
+      );
 
 
-  const files =
-    await response.json();
+    if (
+      !response.ok
+    ) {
+
+      throw new Error(
+        "GitHub returned HTTP " +
+        response.status
+      );
+
+    }
 
 
-  if (!Array.isArray(files)) {
-
-    return [];
-
-  }
+    const files =
+      await response.json();
 
 
-  return files
+    if (
+      !Array.isArray(files)
+    ) {
 
-    .filter(
-      file => {
+      return [];
 
-        if (
-          file.type !==
-          "file"
-        ) {
+    }
 
-          return false;
+
+    return files
+
+      .filter(
+        file => {
+
+          if (
+            file.type !== "file"
+          ) {
+
+            return false;
+
+          }
+
+
+          const name =
+            file.name.toLowerCase();
+
+
+          return (
+            name.endsWith(".mp4") ||
+            name.endsWith(".webm") ||
+            name.endsWith(".mov") ||
+            name.endsWith(".m4v") ||
+            name.endsWith(".ogv") ||
+            name.endsWith(".ogg")
+          );
 
         }
+      )
 
-
-        const name =
-          file.name.toLowerCase();
-
-
-        return (
-          name.endsWith(".mp4") ||
-          name.endsWith(".webm") ||
-          name.endsWith(".mov") ||
-          name.endsWith(".m4v") ||
-          name.endsWith(".ogv") ||
-          name.endsWith(".ogg")
-        );
-
-      }
-    )
-
-    .map(
-      file => {
-
-        return {
+      .map(
+        file => ({
 
           name:
             file.name,
@@ -812,56 +1076,55 @@ async function fetchGitHubVideos() {
             "video",
 
           src:
-            pageInfo.basePath +
-            "/" +
             VIDEO_FOLDER +
             "/" +
             encodeURIComponent(
               file.name
             )
 
-        };
+        })
+      );
 
-      }
+  }
+
+  finally {
+
+    window.clearTimeout(
+      timeout
     );
+
+  }
+
 }
 
 
 // ============================================================
-// FIND GITHUB REPOSITORY NAME
+// LOAD VIDEOS
 // ============================================================
 
-function getRepositoryName(
-  pageInfo
-) {
+async function fetchVideos() {
 
-  const parts =
-    window.location.pathname
-      .split("/")
-      .filter(Boolean);
+  // ----------------------------------------------------------
+  // LOCALHOST
+  // ----------------------------------------------------------
 
+  if (
+    !window.location.hostname.endsWith(
+      ".github.io"
+    )
+  ) {
 
-  // Project site:
-  //
-  // username.github.io/repository/
-  //
-
-  if (parts.length > 0) {
-
-    return parts[0];
+    return await fetchLocalVideos();
 
   }
 
 
-  // User site:
-  //
-  // username.github.io/
-  //
+  // ----------------------------------------------------------
+  // GITHUB PAGES
+  // ----------------------------------------------------------
 
-  return (
-    pageInfo.owner +
-    ".github.io"
-  );
+  return await fetchGitHubVideos();
+
 }
 
 
@@ -871,42 +1134,30 @@ function getRepositoryName(
 
 async function fetchMedia() {
 
-  const isLocal =
-    window.location.hostname ===
-      "localhost" ||
-    window.location.hostname ===
-      "127.0.0.1";
-
-
   const results =
     await Promise.allSettled([
 
       fetchDrivePhotos(),
 
-      isLocal
-        ? fetchLocalVideos()
-        : fetchGitHubVideos()
+      fetchVideos()
 
     ]);
 
 
   const photos =
-    results[0].status ===
-      "fulfilled"
+    results[0].status === "fulfilled"
       ? results[0].value
       : [];
 
 
-  const videosFromSource =
-    results[1].status ===
-      "fulfilled"
+  const videosFromServer =
+    results[1].status === "fulfilled"
       ? results[1].value
       : [];
 
 
   if (
-    results[0].status ===
-    "rejected"
+    results[0].status === "rejected"
   ) {
 
     console.error(
@@ -918,8 +1169,7 @@ async function fetchMedia() {
 
 
   if (
-    results[1].status ===
-    "rejected"
+    results[1].status === "rejected"
   ) {
 
     console.error(
@@ -934,7 +1184,7 @@ async function fetchMedia() {
 
     ...photos,
 
-    ...videosFromSource
+    ...videosFromServer
 
   ];
 
@@ -945,6 +1195,7 @@ async function fetchMedia() {
 
 
   return allMedia;
+
 }
 
 
@@ -954,7 +1205,9 @@ async function fetchMedia() {
 
 async function loadMedia() {
 
-  if (videoObserver) {
+  if (
+    videoObserver
+  ) {
 
     videoObserver.disconnect();
 
@@ -966,22 +1219,8 @@ async function loadMedia() {
 
   setBusy(true);
 
+
   setLoadingState();
-
-
-  if (
-    window.location.protocol ===
-    "file:"
-  ) {
-
-    showError(
-      "Please open the website through localhost:3000, not directly from the HTML file."
-    );
-
-    setBusy(false);
-
-    return;
-  }
 
 
   try {
@@ -990,7 +1229,9 @@ async function loadMedia() {
       await fetchMedia();
 
 
-    if (!media.length) {
+    if (
+      !media.length
+    ) {
 
       showEmptyState();
 
@@ -1030,34 +1271,43 @@ async function loadMedia() {
 
     setupVideoObserver();
 
+  }
 
-  } catch (error) {
+  catch (error) {
+
+    showError(
+      "Could not load the memories. " +
+      error.message
+    );
+
 
     console.error(
-      "Unable to load gallery:",
+      "Unable to load gallery media:",
       error
     );
 
+  }
 
-    showError(
-      error.message ||
-      "Could not load the memories."
-    );
-
-
-  } finally {
+  finally {
 
     setBusy(false);
 
   }
+
 }
 
 
 // ============================================================
-// MUTE / UNMUTE
+// MUTE BUTTON
 // ============================================================
 
-if (muteAll) {
+// Sound is ON by default.
+// The button can still manually mute/unmute
+// if it exists in your existing design.
+
+if (
+  muteAll
+) {
 
   muteAll.addEventListener(
     "click",
