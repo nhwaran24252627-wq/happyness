@@ -4,160 +4,153 @@ const http = require("http");
 const path = require("path");
 
 const ROOT = __dirname;
+
 const PUBLIC = path.join(ROOT, "public");
 const ASSETS = path.join(ROOT, "assets");
 const ASSETS2 = path.join(ROOT, "assets2");
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = 3000;
+
+
+// ============================================================
+// FILE TYPES
+// ============================================================
 
 const imageExtensions = new Set([
-  ".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".heic", ".heif"
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".gif",
+  ".avif",
+  ".heic",
+  ".heif"
 ]);
 
 const videoExtensions = new Set([
-  ".mp4", ".webm", ".mov", ".m4v", ".ogv", ".ogg"
+  ".mp4",
+  ".webm",
+  ".mov",
+  ".m4v",
+  ".ogv",
+  ".ogg"
 ]);
 
+
+// ============================================================
+// MIME TYPES
+// ============================================================
+
 const mimeTypes = {
-  ".avif": "image/avif",
-  ".css": "text/css; charset=utf-8",
-  ".gif": "image/gif",
-  ".heic": "image/heic",
-  ".heif": "image/heif",
   ".html": "text/html; charset=utf-8",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
+  ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".m4v": "video/x-m4v",
-  ".mov": "video/quicktime",
-  ".mp4": "video/mp4",
-  ".ogg": "video/ogg",
-  ".ogv": "video/ogg",
+
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
   ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".avif": "image/avif",
+
+  ".mp4": "video/mp4",
   ".webm": "video/webm",
-  ".webp": "image/webp"
+  ".mov": "video/quicktime",
+  ".m4v": "video/x-m4v",
+  ".ogv": "video/ogg",
+  ".ogg": "video/ogg",
+
+  ".json": "application/json; charset=utf-8"
 };
 
-const nameCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base"
-});
 
-function mediaType(fileName) {
-  const ext = path.extname(fileName).toLowerCase();
+// ============================================================
+// HELPERS
+// ============================================================
 
-  if (imageExtensions.has(ext)) return "image";
-  if (videoExtensions.has(ext)) return "video";
+function getMediaType(filename) {
+
+  const ext =
+    path.extname(filename).toLowerCase();
+
+  if (imageExtensions.has(ext)) {
+    return "image";
+  }
+
+  if (videoExtensions.has(ext)) {
+    return "video";
+  }
 
   return null;
 }
 
-function happinessNumber(fileName) {
-  const stem = path.basename(
-    fileName,
-    path.extname(fileName)
-  );
 
-  const match = stem.match(
-    /^happ(?:i|y)ness[-_ ]0*(\d+)$/i
-  );
+function happinessNumber(filename) {
 
-  if (!match) return null;
-
-  const number = Number(match[1]);
-
-  return number >= 1 && number <= 15
-    ? number
-    : null;
-}
-
-function sortMedia(a, b) {
-  const aNumber = happinessNumber(a.name);
-  const bNumber = happinessNumber(b.name);
-
-  if (aNumber !== null && bNumber !== null) {
-    return (
-      aNumber - bNumber ||
-      nameCollator.compare(a.name, b.name)
+  const stem =
+    path.basename(
+      filename,
+      path.extname(filename)
     );
+
+  const match =
+    stem.match(
+      /^happiness[_ -]?0*(\d+)$/i
+    );
+
+  if (!match) {
+    return Infinity;
   }
 
-  if (aNumber !== null) return -1;
-  if (bNumber !== null) return 1;
+  const number =
+    Number(match[1]);
 
-  return nameCollator.compare(a.name, b.name);
+  if (
+    number >= 1 &&
+    number <= 15
+  ) {
+    return number;
+  }
+
+  return Infinity;
 }
 
 
-// ------------------------------------------------------------
-// LOCAL ASSETS2 VIDEOS
-// ------------------------------------------------------------
+function sortMedia(a, b) {
 
-async function getLocalVideos() {
-  await fsp.mkdir(ASSETS2, { recursive: true });
+  const aNumber =
+    happinessNumber(a.name);
 
-  const entries = await fsp.readdir(
-    ASSETS2,
-    { withFileTypes: true }
+  const bNumber =
+    happinessNumber(b.name);
+
+
+  if (
+    aNumber !== Infinity ||
+    bNumber !== Infinity
+  ) {
+
+    if (
+      aNumber !== bNumber
+    ) {
+      return aNumber - bNumber;
+    }
+  }
+
+
+  return a.name.localeCompare(
+    b.name,
+    undefined,
+    {
+      numeric: true,
+      sensitivity: "base"
+    }
   );
-
-  return entries
-    .filter(entry => entry.isFile())
-    .map(entry => ({
-      name: entry.name,
-      type: mediaType(entry.name)
-    }))
-    .filter(item => item.type === "video")
-    .sort(sortMedia)
-    .map(item => ({
-      name: item.name,
-      type: "video",
-      src:
-        "/assets2/" +
-        encodeURIComponent(item.name)
-    }));
 }
 
 
-// ------------------------------------------------------------
-// JSON
-// ------------------------------------------------------------
+function safeFileName(name) {
 
-function sendJson(response, status, data) {
-  const body = JSON.stringify(data);
-
-  response.writeHead(status, {
-    "Content-Type":
-      "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    "Content-Length":
-      Buffer.byteLength(body)
-  });
-
-  response.end(body);
-}
-
-
-// ------------------------------------------------------------
-// TEXT
-// ------------------------------------------------------------
-
-function sendText(response, status, message) {
-  response.writeHead(status, {
-    "Content-Type":
-      "text/plain; charset=utf-8"
-  });
-
-  response.end(message);
-}
-
-
-// ------------------------------------------------------------
-// SAFE FILE NAME
-// ------------------------------------------------------------
-
-function isSafeFileName(name) {
   return Boolean(name) &&
     !name.includes("/") &&
     !name.includes("\\") &&
@@ -166,73 +159,225 @@ function isSafeFileName(name) {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
+// ASSETS2 VIDEO LIST
+// ============================================================
+
+async function getVideos() {
+
+  await fsp.mkdir(
+    ASSETS2,
+    { recursive: true }
+  );
+
+
+  const files =
+    await fsp.readdir(
+      ASSETS2,
+      {
+        withFileTypes: true
+      }
+    );
+
+
+  return files
+
+    .filter(
+      file =>
+        file.isFile()
+    )
+
+    .filter(
+      file =>
+        getMediaType(file.name) ===
+        "video"
+    )
+
+    .map(
+      file => ({
+        name: file.name,
+        type: "video",
+        src:
+          "/assets2/" +
+          encodeURIComponent(
+            file.name
+          )
+      })
+    )
+
+    .sort(sortMedia);
+}
+
+
+// ============================================================
+// SEND JSON
+// ============================================================
+
+function sendJson(
+  response,
+  status,
+  data
+) {
+
+  const body =
+    JSON.stringify(data);
+
+
+  response.writeHead(
+    status,
+    {
+      "Content-Type":
+        "application/json; charset=utf-8",
+
+      "Cache-Control":
+        "no-store",
+
+      "Content-Length":
+        Buffer.byteLength(body)
+    }
+  );
+
+
+  response.end(body);
+}
+
+
+// ============================================================
+// SEND TEXT
+// ============================================================
+
+function sendText(
+  response,
+  status,
+  text
+) {
+
+  response.writeHead(
+    status,
+    {
+      "Content-Type":
+        "text/plain; charset=utf-8"
+    }
+  );
+
+
+  response.end(text);
+}
+
+
+// ============================================================
 // SEND FILE
-// Supports video range requests
-// ------------------------------------------------------------
+// Supports video streaming/range requests
+// ============================================================
 
 async function sendFile(
   request,
   response,
-  filePath,
-  cacheControl = "public, max-age=3600"
+  filePath
 ) {
+
   let stats;
 
+
   try {
-    stats = await fsp.stat(filePath);
+
+    stats =
+      await fsp.stat(
+        filePath
+      );
+
   } catch {
-    sendText(response, 404, "File not found");
+
+    sendText(
+      response,
+      404,
+      "File not found"
+    );
+
     return;
   }
+
 
   if (!stats.isFile()) {
-    sendText(response, 404, "File not found");
+
+    sendText(
+      response,
+      404,
+      "File not found"
+    );
+
     return;
   }
 
-  const extension =
-    path.extname(filePath).toLowerCase();
+
+  const ext =
+    path.extname(
+      filePath
+    ).toLowerCase();
+
 
   const contentType =
-    mimeTypes[extension] ||
+    mimeTypes[ext] ||
     "application/octet-stream";
 
-  const range = request.headers.range;
 
-  const headers = {
-    "Content-Type": contentType,
-    "Accept-Ranges": "bytes",
-    "Cache-Control": cacheControl
+  const range =
+    request.headers.range;
+
+
+  const commonHeaders = {
+
+    "Content-Type":
+      contentType,
+
+    "Accept-Ranges":
+      "bytes",
+
+    "Cache-Control":
+      "public, max-age=3600"
   };
 
-  // ----------------------------------------------------------
-  // VIDEO RANGE REQUEST
-  // ----------------------------------------------------------
+
+  // ==========================================================
+  // RANGE REQUEST
+  // Important for video playback
+  // ==========================================================
 
   if (range) {
+
     const match =
-      range.match(/^bytes=(\d*)-(\d*)$/);
+      range.match(
+        /^bytes=(\d*)-(\d*)$/
+      );
+
 
     if (!match) {
-      response.writeHead(416, {
-        "Content-Range":
-          `bytes */${stats.size}`
-      });
+
+      response.writeHead(
+        416,
+        {
+          "Content-Range":
+            `bytes */${stats.size}`
+        }
+      );
 
       response.end();
+
       return;
     }
 
+
     let start =
-      match[1] === ""
-        ? 0
-        : Number(match[1]);
+      match[1]
+        ? Number(match[1])
+        : 0;
+
 
     let end =
-      match[2] === ""
-        ? stats.size - 1
-        : Number(match[2]);
+      match[2]
+        ? Number(match[2])
+        : stats.size - 1;
+
 
     if (
       !Number.isInteger(start) ||
@@ -240,14 +385,20 @@ async function sendFile(
       start > end ||
       start >= stats.size
     ) {
-      response.writeHead(416, {
-        "Content-Range":
-          `bytes */${stats.size}`
-      });
+
+      response.writeHead(
+        416,
+        {
+          "Content-Range":
+            `bytes */${stats.size}`
+        }
+      );
 
       response.end();
+
       return;
     }
+
 
     end =
       Math.min(
@@ -255,20 +406,31 @@ async function sendFile(
         stats.size - 1
       );
 
-    response.writeHead(206, {
-      ...headers,
 
-      "Content-Length":
-        end - start + 1,
+    response.writeHead(
+      206,
+      {
+        ...commonHeaders,
 
-      "Content-Range":
-        `bytes ${start}-${end}/${stats.size}`
-    });
+        "Content-Length":
+          end - start + 1,
 
-    if (request.method === "HEAD") {
+        "Content-Range":
+          `bytes ${start}-${end}/${stats.size}`
+      }
+    );
+
+
+    if (
+      request.method ===
+      "HEAD"
+    ) {
+
       response.end();
+
       return;
     }
+
 
     fs.createReadStream(
       filePath,
@@ -278,272 +440,336 @@ async function sendFile(
       }
     ).pipe(response);
 
+
     return;
   }
 
-  // ----------------------------------------------------------
+
+  // ==========================================================
   // NORMAL FILE
-  // ----------------------------------------------------------
+  // ==========================================================
 
-  response.writeHead(200, {
-    ...headers,
-    "Content-Length": stats.size
-  });
+  response.writeHead(
+    200,
+    {
+      ...commonHeaders,
 
-  if (request.method === "HEAD") {
+      "Content-Length":
+        stats.size
+    }
+  );
+
+
+  if (
+    request.method ===
+    "HEAD"
+  ) {
+
     response.end();
+
     return;
   }
 
-  fs.createReadStream(filePath)
-    .pipe(response);
+
+  fs.createReadStream(
+    filePath
+  ).pipe(response);
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // SERVER
-// ------------------------------------------------------------
+// ============================================================
 
-const server = http.createServer(
-  async (request, response) => {
-
-    if (
-      !["GET", "HEAD"]
-        .includes(request.method)
-    ) {
-      response.writeHead(405, {
-        Allow: "GET, HEAD"
-      });
-
-      response.end();
-      return;
-    }
-
-    const url = new URL(
-      request.url,
-      "http://localhost"
-    );
-
-    try {
-
-      // ------------------------------------------------------
-      // HEALTH CHECK
-      // ------------------------------------------------------
+const server =
+  http.createServer(
+    async (
+      request,
+      response
+    ) => {
 
       if (
-        url.pathname === "/api/health"
+        request.method !== "GET" &&
+        request.method !== "HEAD"
       ) {
-        sendJson(response, 200, {
-          ok: true
-        });
 
-        return;
-      }
-
-
-      // ------------------------------------------------------
-      // LOCAL VIDEOS API
-      // ------------------------------------------------------
-
-      if (
-        url.pathname === "/api/videos"
-      ) {
-        sendJson(
-          response,
-          200,
-          await getLocalVideos()
+        response.writeHead(
+          405,
+          {
+            Allow: "GET, HEAD"
+          }
         );
 
+        response.end();
+
         return;
       }
 
 
-      // ------------------------------------------------------
-      // ASSETS2 VIDEO FILES
-      // ------------------------------------------------------
+      const url =
+        new URL(
+          request.url,
+          "http://localhost"
+        );
 
-      if (
-        url.pathname.startsWith(
-          "/assets2/"
-        )
-      ) {
 
-        const name =
-          decodeURIComponent(
-            url.pathname.slice(
-              "/assets2/".length
-            )
-          );
+      try {
 
-        if (!isSafeFileName(name)) {
-          sendText(
+        // ----------------------------------------------------
+        // TEST
+        // ----------------------------------------------------
+
+        if (
+          url.pathname ===
+          "/api/health"
+        ) {
+
+          sendJson(
             response,
-            400,
-            "Invalid video path"
+            200,
+            {
+              ok: true
+            }
           );
 
           return;
         }
 
-        await sendFile(
-          request,
-          response,
-          path.join(
-            ASSETS2,
-            name
-          )
-        );
 
-        return;
-      }
+        // ----------------------------------------------------
+        // GET ASSETS2 VIDEOS
+        // ----------------------------------------------------
+
+        if (
+          url.pathname ===
+          "/api/videos"
+        ) {
+
+          const videos =
+            await getVideos();
 
 
-      // ------------------------------------------------------
-      // OLD ASSETS FOLDER
-      // ------------------------------------------------------
-
-      if (
-        url.pathname.startsWith(
-          "/assets/"
-        )
-      ) {
-
-        const name =
-          decodeURIComponent(
-            url.pathname.slice(
-              "/assets/".length
-            )
-          );
-
-        if (!isSafeFileName(name)) {
-          sendText(
+          sendJson(
             response,
-            400,
-            "Invalid asset path"
+            200,
+            videos
           );
+
 
           return;
         }
 
-        await sendFile(
-          request,
-          response,
-          path.join(
-            ASSETS,
-            name
+
+        // ----------------------------------------------------
+        // ASSETS2 VIDEO FILE
+        // ----------------------------------------------------
+
+        if (
+          url.pathname.startsWith(
+            "/assets2/"
           )
-        );
+        ) {
 
-        return;
-      }
+          const filename =
+            decodeURIComponent(
+              url.pathname.slice(
+                "/assets2/".length
+              )
+            );
 
 
-      // ------------------------------------------------------
-      // PUBLIC FOLDER
-      // ------------------------------------------------------
+          if (
+            !safeFileName(filename)
+          ) {
 
-      let relativePath =
-        url.pathname === "/"
-          ? "index.html"
-          : decodeURIComponent(
+            sendText(
+              response,
+              400,
+              "Invalid video filename"
+            );
+
+            return;
+          }
+
+
+          await sendFile(
+            request,
+            response,
+            path.join(
+              ASSETS2,
+              filename
+            )
+          );
+
+
+          return;
+        }
+
+
+        // ----------------------------------------------------
+        // OLD ASSETS FILE
+        // ----------------------------------------------------
+
+        if (
+          url.pathname.startsWith(
+            "/assets/"
+          )
+        ) {
+
+          const filename =
+            decodeURIComponent(
+              url.pathname.slice(
+                "/assets/".length
+              )
+            );
+
+
+          if (
+            !safeFileName(filename)
+          ) {
+
+            sendText(
+              response,
+              400,
+              "Invalid asset filename"
+            );
+
+            return;
+          }
+
+
+          await sendFile(
+            request,
+            response,
+            path.join(
+              ASSETS,
+              filename
+            )
+          );
+
+
+          return;
+        }
+
+
+        // ----------------------------------------------------
+        // PUBLIC FOLDER
+        // ----------------------------------------------------
+
+        let requestedFile;
+
+
+        if (
+          url.pathname === "/"
+        ) {
+
+          requestedFile =
+            "index.html";
+
+        } else {
+
+          requestedFile =
+            decodeURIComponent(
               url.pathname.replace(
                 /^\//,
                 ""
               )
             );
+        }
 
-      const resolvedPath =
-        path.resolve(
-          PUBLIC,
-          relativePath
-        );
 
-      const relative =
-        path.relative(
-          PUBLIC,
-          resolvedPath
-        );
+        const filePath =
+          path.resolve(
+            PUBLIC,
+            requestedFile
+          );
 
-      if (
-        relative.startsWith("..") ||
-        path.isAbsolute(relative)
-      ) {
-        sendText(
+
+        const relative =
+          path.relative(
+            PUBLIC,
+            filePath
+          );
+
+
+        if (
+          relative.startsWith("..") ||
+          path.isAbsolute(relative)
+        ) {
+
+          sendText(
+            response,
+            400,
+            "Invalid path"
+          );
+
+          return;
+        }
+
+
+        await sendFile(
+          request,
           response,
-          400,
-          "Invalid path"
+          filePath
         );
 
-        return;
-      }
+      } catch (error) {
 
-      await sendFile(
-        request,
-        response,
-        resolvedPath,
-        "no-store"
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Server error:",
-        error
-      );
-
-      if (!response.headersSent) {
-        sendJson(
-          response,
-          500,
-          {
-            error:
-              "Server error"
-          }
+        console.error(
+          error
         );
+
+
+        if (
+          !response.headersSent
+        ) {
+
+          sendJson(
+            response,
+            500,
+            {
+              error:
+                "Server error"
+            }
+          );
+        }
       }
     }
-  }
-);
+  );
 
 
-// ------------------------------------------------------------
+// ============================================================
 // START
-// ------------------------------------------------------------
-
-server.on(
-  "error",
-  error => {
-
-    if (
-      error.code === "EADDRINUSE"
-    ) {
-      console.error(
-        `Port ${PORT} is already in use.`
-      );
-
-      console.error(
-        "Try: set PORT=3001 && npm start"
-      );
-    } else {
-      console.error(error);
-    }
-
-    process.exitCode = 1;
-  }
-);
-
+// ============================================================
 
 server.listen(
   PORT,
   () => {
 
+    console.log("");
     console.log(
-      `Memory gallery running at http://localhost:${PORT}`
+      "================================"
     );
 
     console.log(
-      "Videos folder:",
+      " MEMORY GALLERY"
+    );
+
+    console.log(
+      "================================"
+    );
+
+    console.log(
+      `http://localhost:${PORT}`
+    );
+
+    console.log(
+      "Videos:",
       ASSETS2
+    );
+
+    console.log(
+      "================================"
     );
 
   }
