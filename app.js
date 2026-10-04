@@ -14,11 +14,20 @@ const errorTemplate =
   document.getElementById("errorTemplate");
 
 
+// ============================================================
+// GOOGLE DRIVE
+// ============================================================
+
 const GOOGLE_DRIVE_API =
   "https://script.google.com/macros/s/AKfycbzau-6zZkb0X3KM5gqgXKRfHVJi7s4OG2SfkKMSqGYD6L7845LE1KEf9AyYGCpwJDoM/exec";
 
 
-const REQUEST_TIMEOUT_MS = 15000;
+// ============================================================
+// SETTINGS
+// ============================================================
+
+const REQUEST_TIMEOUT =
+  15000;
 
 let videos = [];
 
@@ -28,41 +37,42 @@ let videoObserver = null;
 
 
 // ============================================================
-// LOADING
+// LOADING STATE
 // ============================================================
 
-function setBusy(value) {
-  gallery.setAttribute(
-    "aria-busy",
-    String(value)
-  );
-}
-
-
-function setLoadingState() {
+function showLoading() {
 
   gallery.replaceChildren();
 
-  const state =
-    document.createElement("section");
+  const section =
+    document.createElement(
+      "section"
+    );
 
-  state.className =
+  section.className =
     "state-card loading-state";
 
-  state.innerHTML =
-    '<div class="loading-orbit" aria-hidden="true">✦</div>' +
-    '<p class="state-kicker">Just a moment</p>' +
-    "<h2>Loading memories…</h2>" +
-    "<p>Reading the memories.</p>";
+  section.innerHTML = `
+    <div class="loading-orbit" aria-hidden="true">✦</div>
+    <p class="state-kicker">Just a moment</p>
+    <h2>Loading memories…</h2>
+    <p>Reading the memories.</p>
+  `;
 
-  gallery.appendChild(state);
+  gallery.appendChild(
+    section
+  );
 
   memoryCount.textContent =
     "Preparing memories";
 }
 
 
-function showEmptyState() {
+// ============================================================
+// EMPTY
+// ============================================================
+
+function showEmpty() {
 
   gallery.replaceChildren(
     emptyTemplate.content.cloneNode(true)
@@ -73,34 +83,47 @@ function showEmptyState() {
 }
 
 
+// ============================================================
+// ERROR
+// ============================================================
+
 function showError(message) {
 
   const state =
     errorTemplate.content.cloneNode(true);
+
 
   const detail =
     state.querySelector(
       ".error-detail"
     );
 
+
   if (detail) {
     detail.textContent =
       message;
   }
+
 
   const retry =
     state.querySelector(
       ".retry-button"
     );
 
+
   if (retry) {
+
     retry.addEventListener(
       "click",
       loadMedia
     );
   }
 
-  gallery.replaceChildren(state);
+
+  gallery.replaceChildren(
+    state
+  );
+
 
   memoryCount.textContent =
     "Unable to load";
@@ -109,30 +132,50 @@ function showError(message) {
 
 // ============================================================
 // SORTING
+// happiness_1 → happiness_15 FIRST
 // ============================================================
 
 function getHappinessNumber(name) {
 
   const match =
     name.match(
-      /^happiness[_ -]?(\d+)/i
+      /^happiness[_ -]?0*(\d+)/i
     );
+
 
   if (!match) {
     return Infinity;
   }
 
-  return Number(match[1]);
+
+  const number =
+    Number(match[1]);
+
+
+  if (
+    number >= 1 &&
+    number <= 15
+  ) {
+    return number;
+  }
+
+
+  return Infinity;
 }
 
 
 function sortMedia(a, b) {
 
   const aNumber =
-    getHappinessNumber(a.name);
+    getHappinessNumber(
+      a.name
+    );
+
 
   const bNumber =
-    getHappinessNumber(b.name);
+    getHappinessNumber(
+      b.name
+    );
 
 
   if (
@@ -143,8 +186,10 @@ function sortMedia(a, b) {
     if (
       aNumber !== bNumber
     ) {
+
       return (
-        aNumber - bNumber
+        aNumber -
+        bNumber
       );
     }
   }
@@ -165,33 +210,7 @@ function sortMedia(a, b) {
 // CREATE MEDIA
 // ============================================================
 
-function addMediaFrame(
-  item,
-  index
-) {
-
-  const section =
-    document.createElement(
-      "section"
-    );
-
-  section.className =
-    "memory";
-
-  section.style.setProperty(
-    "--memory-index",
-    index + 1
-  );
-
-
-  const frame =
-    document.createElement(
-      "figure"
-    );
-
-  frame.className =
-    "frame";
-
+function createMedia(item) {
 
   const media =
     document.createElement(
@@ -213,7 +232,8 @@ function addMediaFrame(
     item.type === "video"
   ) {
 
-    media.loop = true;
+    media.loop =
+      true;
 
     media.muted =
       muted;
@@ -221,16 +241,11 @@ function addMediaFrame(
     media.playsInline =
       true;
 
+    media.controls =
+      false;
+
     media.preload =
-      index < 2
-        ? "auto"
-        : "metadata";
-
-
-    media.setAttribute(
-      "aria-label",
-      item.name
-    );
+      "metadata";
 
 
     media.addEventListener(
@@ -242,12 +257,10 @@ function addMediaFrame(
           media.videoHeight
         ) {
 
-          frame.style.aspectRatio =
+          media.closest(
+            ".frame"
+          ).style.aspectRatio =
             `${media.videoWidth} / ${media.videoHeight}`;
-
-          frame.classList.add(
-            "has-media"
-          );
         }
       }
     );
@@ -257,33 +270,18 @@ function addMediaFrame(
       "error",
       () => {
 
-        createFallback(
-          frame,
-          "This video could not be previewed in this browser."
+        console.error(
+          "Video failed:",
+          item.src
         );
 
-      },
-      {
-        once: true
       }
     );
 
 
-    videos.push(media);
-
-
-    const badge =
-      document.createElement(
-        "span"
-      );
-
-    badge.className =
-      "video-badge";
-
-    badge.textContent =
-      "Video";
-
-    frame.appendChild(badge);
+    videos.push(
+      media
+    );
 
   }
 
@@ -295,12 +293,10 @@ function addMediaFrame(
   else {
 
     media.alt =
-      item.name;
+      "";
 
     media.loading =
-      index < 2
-        ? "eager"
-        : "lazy";
+      "lazy";
 
     media.decoding =
       "async";
@@ -315,12 +311,10 @@ function addMediaFrame(
           media.naturalHeight
         ) {
 
-          frame.style.aspectRatio =
+          media.closest(
+            ".frame"
+          ).style.aspectRatio =
             `${media.naturalWidth} / ${media.naturalHeight}`;
-
-          frame.classList.add(
-            "has-media"
-          );
         }
       }
     );
@@ -330,71 +324,67 @@ function addMediaFrame(
       "error",
       () => {
 
-        createFallback(
-          frame,
-          "This image could not be previewed."
+        console.error(
+          "Image failed:",
+          item.src
         );
 
-      },
-      {
-        once: true
       }
     );
   }
 
 
-  frame.appendChild(media);
+  return media;
+}
 
 
-  // ==========================================================
-  // CAPTION
-  // ==========================================================
+// ============================================================
+// CREATE FRAME
+// NO FILENAME / NO CAPTION
+// ============================================================
 
-  const caption =
+function createFrame(
+  item,
+  index
+) {
+
+  const section =
     document.createElement(
-      "figcaption"
+      "section"
     );
 
-  caption.className =
-    "media-label";
-
-  caption.title =
-    item.name;
+  section.className =
+    "memory";
 
 
-  const fileName =
-    document.createElement(
-      "span"
-    );
-
-  fileName.textContent =
-    item.name;
-
-  caption.appendChild(
-    fileName
+  section.style.setProperty(
+    "--memory-index",
+    index + 1
   );
 
 
-  const number =
+  const frame =
     document.createElement(
-      "span"
+      "figure"
     );
 
-  number.className =
-    "memory-number";
+  frame.className =
+    "frame";
 
-  number.textContent =
-    String(index + 1)
-      .padStart(2, "0");
 
-  caption.appendChild(
-    number
-  );
+  const media =
+    createMedia(
+      item
+    );
 
+
+  // Put ONLY the image/video
+  // inside the frame.
 
   frame.appendChild(
-    caption
+    media
   );
+
 
   section.appendChild(
     frame
@@ -406,46 +396,13 @@ function addMediaFrame(
 
 
 // ============================================================
-// FALLBACK
-// ============================================================
-
-function createFallback(
-  frame,
-  message
-) {
-
-  if (
-    frame.querySelector(
-      ".media-fallback"
-    )
-  ) {
-    return;
-  }
-
-  const fallback =
-    document.createElement(
-      "p"
-    );
-
-  fallback.className =
-    "media-fallback";
-
-  fallback.textContent =
-    message;
-
-  frame.appendChild(
-    fallback
-  );
-}
-
-
-// ============================================================
 // VIDEO AUTOPLAY
 // ============================================================
 
 function setupVideoObserver() {
 
   if (videoObserver) {
+
     videoObserver.disconnect();
   }
 
@@ -480,7 +437,6 @@ function setupVideoObserver() {
             } else {
 
               video.pause();
-
             }
           }
         );
@@ -501,7 +457,6 @@ function setupVideoObserver() {
       videoObserver.observe(
         video
       );
-
     }
   );
 }
@@ -516,10 +471,13 @@ async function fetchDrivePhotos() {
   const controller =
     new AbortController();
 
+
   const timeout =
     setTimeout(
-      () => controller.abort(),
-      REQUEST_TIMEOUT_MS
+      () => {
+        controller.abort();
+      },
+      REQUEST_TIMEOUT
     );
 
 
@@ -539,7 +497,7 @@ async function fetchDrivePhotos() {
     if (!response.ok) {
 
       throw new Error(
-        "Google Drive returned HTTP " +
+        "Google Drive HTTP " +
         response.status
       );
     }
@@ -549,10 +507,12 @@ async function fetchDrivePhotos() {
       await response.json();
 
 
-    if (!Array.isArray(data)) {
+    if (
+      !Array.isArray(data)
+    ) {
 
       throw new Error(
-        "Google Drive returned invalid data."
+        "Invalid Google Drive response"
       );
     }
 
@@ -561,27 +521,42 @@ async function fetchDrivePhotos() {
       .filter(
         item =>
           item &&
-          item.type === "image"
+          item.type ===
+          "image"
       )
       .map(
         item => {
 
-          if (item.src) {
-            return item;
-          }
+          let src =
+            item.src;
 
 
-          return {
-            ...item,
+          if (!src && item.id) {
 
-            src:
+            src =
               "https://drive.google.com/thumbnail?id=" +
               encodeURIComponent(
                 item.id
               ) +
-              "&sz=w2000"
+              "&sz=w2000";
+          }
+
+
+          return {
+            name:
+              item.name ||
+              "image",
+
+            type:
+              "image",
+
+            src
           };
         }
+      )
+      .filter(
+        item =>
+          item.src
       );
 
   } finally {
@@ -603,7 +578,8 @@ async function fetchLocalVideos() {
     await fetch(
       "/api/videos",
       {
-        cache: "no-store"
+        cache:
+          "no-store"
       }
     );
 
@@ -611,7 +587,7 @@ async function fetchLocalVideos() {
   if (!response.ok) {
 
     throw new Error(
-      "Local video server returned HTTP " +
+      "assets2 HTTP " +
       response.status
     );
   }
@@ -621,10 +597,12 @@ async function fetchLocalVideos() {
     await response.json();
 
 
-  if (!Array.isArray(data)) {
+  if (
+    !Array.isArray(data)
+  ) {
 
     throw new Error(
-      "Local video API returned invalid data."
+      "Invalid assets2 response"
     );
   }
 
@@ -634,7 +612,7 @@ async function fetchLocalVideos() {
 
 
 // ============================================================
-// LOAD EVERYTHING
+// LOAD ALL MEDIA
 // ============================================================
 
 async function fetchMedia() {
@@ -647,34 +625,38 @@ async function fetchMedia() {
 
 
   const photos =
-    results[0].status === "fulfilled"
+    results[0].status ===
+    "fulfilled"
       ? results[0].value
       : [];
 
 
   const localVideos =
-    results[1].status === "fulfilled"
+    results[1].status ===
+    "fulfilled"
       ? results[1].value
       : [];
 
 
   if (
-    results[0].status === "rejected"
+    results[0].status ===
+    "rejected"
   ) {
 
     console.error(
-      "Google Drive photos failed:",
+      "Google Drive error:",
       results[0].reason
     );
   }
 
 
   if (
-    results[1].status === "rejected"
+    results[1].status ===
+    "rejected"
   ) {
 
     console.error(
-      "Local videos failed:",
+      "assets2 error:",
       results[1].reason
     );
   }
@@ -696,7 +678,7 @@ async function fetchMedia() {
 
 
 // ============================================================
-// LOAD GALLERY
+// LOAD PAGE
 // ============================================================
 
 async function loadMedia() {
@@ -709,9 +691,13 @@ async function loadMedia() {
   videos = [];
 
 
-  setBusy(true);
+  gallery.setAttribute(
+    "aria-busy",
+    "true"
+  );
 
-  setLoadingState();
+
+  showLoading();
 
 
   try {
@@ -720,9 +706,11 @@ async function loadMedia() {
       await fetchMedia();
 
 
-    if (!media.length) {
+    if (
+      media.length === 0
+    ) {
 
-      showEmptyState();
+      showEmpty();
 
       return;
     }
@@ -736,7 +724,7 @@ async function loadMedia() {
       (item, index) => {
 
         fragment.appendChild(
-          addMediaFrame(
+          createFrame(
             item,
             index
           )
@@ -764,7 +752,6 @@ async function loadMedia() {
   } catch (error) {
 
     console.error(
-      "Gallery error:",
       error
     );
 
@@ -775,13 +762,16 @@ async function loadMedia() {
 
   } finally {
 
-    setBusy(false);
+    gallery.setAttribute(
+      "aria-busy",
+      "false"
+    );
   }
 }
 
 
 // ============================================================
-// MUTE / UNMUTE
+// MUTE BUTTON
 // ============================================================
 
 muteAll.addEventListener(
@@ -797,7 +787,6 @@ muteAll.addEventListener(
 
         video.muted =
           muted;
-
       }
     );
 
@@ -823,12 +812,6 @@ muteAll.addEventListener(
         ? "Unmute videos"
         : "Mute videos"
     );
-
-
-    muteAll.title =
-      muted
-        ? "Unmute videos"
-        : "Mute videos";
   }
 );
 
