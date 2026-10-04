@@ -16,7 +16,7 @@ const GOOGLE_DRIVE_API =
 
 
 // ============================================================
-// VIDEO SETTINGS
+// VIDEO FOLDER
 // ============================================================
 
 const VIDEO_FOLDER = "assets2";
@@ -26,17 +26,132 @@ const VIDEO_FOLDER = "assets2";
 // STATE
 // ============================================================
 
-// IMPORTANT:
-// Sound is ON by default.
-let muted = false;
-
 let videos = [];
 
 let videoObserver = null;
 
 
 // ============================================================
-// DETECT GITHUB PAGES
+// VIDEO PLAY BUTTON STYLE
+// ============================================================
+
+const videoStyle = document.createElement("style");
+
+videoStyle.textContent = `
+/* =========================================================
+   CUSTOM VIDEO PLAY BUTTON
+   ========================================================= */
+
+.frame {
+  position: relative;
+}
+
+
+/* Large play button */
+
+.custom-video-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+
+  transform: translate(-50%, -50%);
+
+  width: 78px;
+  height: 78px;
+
+  border: none;
+  border-radius: 50%;
+
+  background: rgba(0, 0, 0, 0.72);
+
+  color: white;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 34px;
+  line-height: 1;
+
+  cursor: pointer;
+
+  z-index: 20;
+
+  padding: 0;
+
+  box-shadow:
+    0 5px 25px rgba(0, 0, 0, 0.35);
+
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    opacity 0.18s ease;
+}
+
+
+.custom-video-play:hover {
+  transform:
+    translate(-50%, -50%)
+    scale(1.08);
+
+  background:
+    rgba(0, 0, 0, 0.85);
+}
+
+
+.custom-video-play:active {
+  transform:
+    translate(-50%, -50%)
+    scale(0.94);
+}
+
+
+/* Keyboard focus */
+
+.custom-video-play:focus-visible {
+  outline:
+    3px solid white;
+
+  outline-offset:
+    4px;
+}
+
+
+/* Hide play button while video is playing */
+
+.custom-video-play.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+
+/* Video itself */
+
+.frame video {
+  cursor: pointer;
+}
+
+
+/* Remove filename/caption completely */
+
+.media-label {
+  display: none !important;
+}
+
+
+/* Keep video colours original */
+
+.frame video {
+  opacity: 1 !important;
+  filter: none !important;
+}
+`;
+
+document.head.appendChild(videoStyle);
+
+
+// ============================================================
+// GITHUB REPOSITORY DETECTION
 // ============================================================
 
 function getGitHubRepository() {
@@ -48,7 +163,9 @@ function getGitHubRepository() {
     window.location.pathname;
 
 
-  if (!host.endsWith(".github.io")) {
+  if (
+    !host.endsWith(".github.io")
+  ) {
 
     return null;
 
@@ -58,15 +175,16 @@ function getGitHubRepository() {
   const owner =
     host.split(".")[0];
 
+
   const parts =
     path
       .split("/")
       .filter(Boolean);
 
 
-  // Project Pages
-  // username.github.io/repository/
-  if (parts.length > 0) {
+  if (
+    parts.length > 0
+  ) {
 
     return {
       owner: owner,
@@ -76,8 +194,6 @@ function getGitHubRepository() {
   }
 
 
-  // User Pages
-  // username.github.io
   return {
     owner: owner,
     repo: owner + ".github.io"
@@ -87,7 +203,7 @@ function getGitHubRepository() {
 
 
 // ============================================================
-// HELPERS
+// BASIC HELPERS
 // ============================================================
 
 function setBusy(isBusy) {
@@ -108,6 +224,7 @@ function setLoadingState() {
   const state =
     document.createElement("section");
 
+
   state.className =
     "state-card loading-state";
 
@@ -119,7 +236,9 @@ function setLoadingState() {
     "<p>Reading the memories.</p>";
 
 
-  gallery.appendChild(state);
+  gallery.appendChild(
+    state
+  );
 
 
   memoryCount.textContent =
@@ -229,7 +348,6 @@ function formatCount(count) {
 // ============================================================
 // SORTING
 // happiness_1 → happiness_15 FIRST
-// everything else AFTER
 // ============================================================
 
 function getHappinessNumber(name) {
@@ -251,6 +369,7 @@ function sortMedia(a, b) {
 
   const aNumber =
     getHappinessNumber(a.name);
+
 
   const bNumber =
     getHappinessNumber(b.name);
@@ -291,22 +410,117 @@ function sortMedia(a, b) {
 // PAUSE ALL OTHER VIDEOS
 // ============================================================
 
-function pauseOtherVideos(currentVideo) {
+function pauseOtherVideos(
+  currentVideo
+) {
 
   videos.forEach(
     (video) => {
 
       if (
-        video !== currentVideo &&
-        !video.paused
+        video !== currentVideo
       ) {
 
-        video.pause();
+        if (
+          !video.paused
+        ) {
+
+          video.pause();
+
+        }
 
       }
 
     }
   );
+
+}
+
+
+// ============================================================
+// SHOW / HIDE PLAY BUTTON
+// ============================================================
+
+function showPlayButton(
+  button
+) {
+
+  button.classList.remove(
+    "hidden"
+  );
+
+}
+
+
+function hidePlayButton(
+  button
+) {
+
+  button.classList.add(
+    "hidden"
+  );
+
+}
+
+
+// ============================================================
+// PLAY VIDEO
+// ============================================================
+
+function playVideo(
+  video,
+  playButton
+) {
+
+  // First stop every other video.
+  pauseOtherVideos(
+    video
+  );
+
+
+  // ----------------------------------------------------------
+  // AUDIO MUST BE ON
+  // ----------------------------------------------------------
+
+  video.muted =
+    false;
+
+  video.defaultMuted =
+    false;
+
+  video.volume =
+    1;
+
+
+  // ----------------------------------------------------------
+  // PLAY ONLY AFTER USER CLICK
+  // ----------------------------------------------------------
+
+  const promise =
+    video.play();
+
+
+  if (
+    promise &&
+    typeof promise.catch === "function"
+  ) {
+
+    promise.catch(
+      (error) => {
+
+        console.warn(
+          "Video could not start:",
+          error
+        );
+
+        showPlayButton(
+          playButton
+        );
+
+      }
+    );
+
+  }
 
 }
 
@@ -362,38 +576,53 @@ function addMediaFrame(
     item.type === "video"
   ) {
 
-    // Native browser controls.
-    // This gives the user:
-    // ▶ Play
-    // ⏸ Pause
-    // 🔊 Volume
-    // Fullscreen
-    media.controls = true;
+    // --------------------------------------------------------
+    // NEVER AUTOPLAY
+    // --------------------------------------------------------
+
+    media.autoplay =
+      false;
 
 
-    // Sound ON by default.
-    media.muted = false;
+    media.removeAttribute(
+      "autoplay"
+    );
 
 
-    media.defaultMuted = false;
+    // --------------------------------------------------------
+    // VIDEO SETTINGS
+    // --------------------------------------------------------
+
+    media.controls =
+      false;
+
+
+    media.loop =
+      true;
 
 
     media.playsInline =
       true;
 
 
-    // Do NOT autoplay.
-    media.autoplay =
-      false;
-
-
-    // Prevent endless background loading.
     media.preload =
       "metadata";
 
 
-    media.loop =
-      true;
+    // --------------------------------------------------------
+    // AUDIO ON
+    // --------------------------------------------------------
+
+    media.muted =
+      false;
+
+
+    media.defaultMuted =
+      false;
+
+
+    media.volume =
+      1;
 
 
     media.setAttribute(
@@ -403,25 +632,69 @@ function addMediaFrame(
 
 
     // --------------------------------------------------------
-    // WHEN THIS VIDEO STARTS PLAYING
-    // PAUSE EVERY OTHER VIDEO
+    // CUSTOM PLAY BUTTON
     // --------------------------------------------------------
 
-    media.addEventListener(
-      "play",
-      () => {
+    const playButton =
+      document.createElement(
+        "button"
+      );
 
-        // Always keep sound enabled.
+
+    playButton.type =
+      "button";
+
+
+    playButton.className =
+      "custom-video-play";
+
+
+    playButton.innerHTML =
+      "▶";
+
+
+    playButton.setAttribute(
+      "aria-label",
+      "Play video"
+    );
+
+
+    playButton.title =
+      "Play video";
+
+
+    frame.appendChild(
+      playButton
+    );
+
+
+    // --------------------------------------------------------
+    // PLAY BUTTON CLICK
+    // --------------------------------------------------------
+
+    playButton.addEventListener(
+      "click",
+      (event) => {
+
+        event.preventDefault();
+
+        event.stopPropagation();
+
+
+        // Always make sure audio is ON.
         media.muted =
           false;
-
 
         media.defaultMuted =
           false;
 
+        media.volume =
+          1;
 
-        pauseOtherVideos(
-          media
+
+        playVideo(
+          media,
+          playButton
         );
 
       }
@@ -429,8 +702,41 @@ function addMediaFrame(
 
 
     // --------------------------------------------------------
-    // USER PRESSES PLAY
-    // MAKE SURE SOUND IS ON
+    // WHEN VIDEO STARTS
+    // --------------------------------------------------------
+
+    media.addEventListener(
+      "play",
+      () => {
+
+        // Pause all other videos.
+        pauseOtherVideos(
+          media
+        );
+
+
+        // Audio ON.
+        media.muted =
+          false;
+
+        media.defaultMuted =
+          false;
+
+        media.volume =
+          1;
+
+
+        // Hide play icon.
+        hidePlayButton(
+          playButton
+        );
+
+      }
+    );
+
+
+    // --------------------------------------------------------
+    // WHILE VIDEO IS ACTUALLY PLAYING
     // --------------------------------------------------------
 
     media.addEventListener(
@@ -439,6 +745,73 @@ function addMediaFrame(
 
         media.muted =
           false;
+
+        media.defaultMuted =
+          false;
+
+        media.volume =
+          1;
+
+
+        hidePlayButton(
+          playButton
+        );
+
+      }
+    );
+
+
+    // --------------------------------------------------------
+    // VIDEO PAUSED
+    // --------------------------------------------------------
+
+    media.addEventListener(
+      "pause",
+      () => {
+
+        showPlayButton(
+          playButton
+        );
+
+      }
+    );
+
+
+    // --------------------------------------------------------
+    // VIDEO ENDED
+    // --------------------------------------------------------
+
+    media.addEventListener(
+      "ended",
+      () => {
+
+        showPlayButton(
+          playButton
+        );
+
+      }
+    );
+
+
+    // --------------------------------------------------------
+    // TAP VIDEO TO PAUSE
+    // --------------------------------------------------------
+
+    media.addEventListener(
+      "click",
+      () => {
+
+        if (
+          !media.paused
+        ) {
+
+          media.pause();
+
+          showPlayButton(
+            playButton
+          );
+
+        }
 
       }
     );
@@ -495,26 +868,6 @@ function addMediaFrame(
 
     videos.push(
       media
-    );
-
-
-    // Small video indicator.
-    const badge =
-      document.createElement(
-        "span"
-      );
-
-
-    badge.className =
-      "video-badge";
-
-
-    badge.textContent =
-      "Video";
-
-
-    frame.appendChild(
-      badge
     );
 
   }
@@ -583,13 +936,14 @@ function addMediaFrame(
   }
 
 
+  // Add image/video.
   frame.appendChild(
     media
   );
 
 
   // ==========================================================
-  // CAPTION
+  // HIDDEN CAPTION
   // ==========================================================
 
   const caption =
@@ -602,47 +956,12 @@ function addMediaFrame(
     "media-label";
 
 
-  caption.title =
+  caption.style.display =
+    "none";
+
+
+  caption.textContent =
     item.name;
-
-
-  const fileName =
-    document.createElement(
-      "span"
-    );
-
-
-  fileName.textContent =
-    item.name;
-
-
-  caption.appendChild(
-    fileName
-  );
-
-
-  const number =
-    document.createElement(
-      "span"
-    );
-
-
-  number.className =
-    "memory-number";
-
-
-  number.textContent =
-    String(
-      index + 1
-    ).padStart(
-      2,
-      "0"
-    );
-
-
-  caption.appendChild(
-    number
-  );
 
 
   frame.appendChild(
@@ -661,7 +980,7 @@ function addMediaFrame(
 
 
 // ============================================================
-// VIDEO SCROLL BEHAVIOUR
+// VIDEO SCROLL OBSERVER
 // ============================================================
 
 function setupVideoObserver() {
@@ -698,10 +1017,9 @@ function setupVideoObserver() {
 
             // ------------------------------------------------
             // IMPORTANT:
-            // We DO NOT autoplay videos anymore.
+            // NEVER PLAY HERE.
             //
-            // We only pause videos when they leave view.
-            // This prevents multiple videos from playing.
+            // Only pause when video leaves screen.
             // ------------------------------------------------
 
             if (
@@ -750,7 +1068,7 @@ function setupVideoObserver() {
 
 
 // ============================================================
-// LOAD GOOGLE DRIVE PHOTOS
+// GOOGLE DRIVE PHOTOS
 // ============================================================
 
 async function fetchDrivePhotos() {
@@ -855,7 +1173,7 @@ async function fetchDrivePhotos() {
 
 
 // ============================================================
-// LOAD LOCAL VIDEOS
+// LOCALHOST VIDEOS
 // ============================================================
 
 async function fetchLocalVideos() {
@@ -948,7 +1266,7 @@ async function fetchLocalVideos() {
 
 
 // ============================================================
-// LOAD GITHUB ASSETS2 VIDEOS
+// GITHUB VIDEOS
 // ============================================================
 
 async function fetchGitHubVideos() {
@@ -1099,15 +1417,12 @@ async function fetchGitHubVideos() {
 
 
 // ============================================================
-// LOAD VIDEOS
+// SELECT VIDEO SOURCE
 // ============================================================
 
 async function fetchVideos() {
 
-  // ----------------------------------------------------------
   // LOCALHOST
-  // ----------------------------------------------------------
-
   if (
     !window.location.hostname.endsWith(
       ".github.io"
@@ -1119,10 +1434,7 @@ async function fetchVideos() {
   }
 
 
-  // ----------------------------------------------------------
   // GITHUB PAGES
-  // ----------------------------------------------------------
-
   return await fetchGitHubVideos();
 
 }
@@ -1214,6 +1526,16 @@ async function loadMedia() {
   }
 
 
+  // Stop existing videos.
+  videos.forEach(
+    (video) => {
+
+      video.pause();
+
+    }
+  );
+
+
   videos = [];
 
 
@@ -1298,66 +1620,18 @@ async function loadMedia() {
 
 
 // ============================================================
-// MUTE BUTTON
+// DISABLE OLD GLOBAL MUTE BEHAVIOUR
 // ============================================================
-
-// Sound is ON by default.
-// The button can still manually mute/unmute
-// if it exists in your existing design.
 
 if (
   muteAll
 ) {
 
-  muteAll.addEventListener(
-    "click",
-    () => {
+  // Hide the old global mute button because
+  // videos must always start with audio ON.
 
-      muted =
-        !muted;
-
-
-      videos.forEach(
-        (video) => {
-
-          video.muted =
-            muted;
-
-        }
-      );
-
-
-      const icon =
-        muteAll.querySelector(
-          "span"
-        );
-
-
-      if (icon) {
-
-        icon.textContent =
-          muted
-            ? "🔇"
-            : "🔊";
-
-      }
-
-
-      muteAll.setAttribute(
-        "aria-label",
-        muted
-          ? "Unmute videos"
-          : "Mute videos"
-      );
-
-
-      muteAll.title =
-        muted
-          ? "Unmute videos"
-          : "Mute videos";
-
-    }
-  );
+  muteAll.style.display =
+    "none";
 
 }
 
