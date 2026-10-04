@@ -15,7 +15,7 @@ const errorTemplate =
 
 
 // ============================================================
-// GOOGLE DRIVE
+// GOOGLE DRIVE APPS SCRIPT
 // ============================================================
 
 const GOOGLE_DRIVE_API =
@@ -26,8 +26,7 @@ const GOOGLE_DRIVE_API =
 // SETTINGS
 // ============================================================
 
-const REQUEST_TIMEOUT =
-  15000;
+const REQUEST_TIMEOUT = 15000;
 
 let videos = [];
 
@@ -37,7 +36,7 @@ let videoObserver = null;
 
 
 // ============================================================
-// LOADING STATE
+// LOADING
 // ============================================================
 
 function showLoading() {
@@ -45,23 +44,31 @@ function showLoading() {
   gallery.replaceChildren();
 
   const section =
-    document.createElement(
-      "section"
-    );
+    document.createElement("section");
 
   section.className =
     "state-card loading-state";
 
   section.innerHTML = `
-    <div class="loading-orbit" aria-hidden="true">✦</div>
-    <p class="state-kicker">Just a moment</p>
-    <h2>Loading memories…</h2>
-    <p>Reading the memories.</p>
+    <div
+      class="loading-orbit"
+      aria-hidden="true"
+    >✦</div>
+
+    <p class="state-kicker">
+      Just a moment
+    </p>
+
+    <h2>
+      Loading memories…
+    </h2>
+
+    <p>
+      Reading the memories.
+    </p>
   `;
 
-  gallery.appendChild(
-    section
-  );
+  gallery.appendChild(section);
 
   memoryCount.textContent =
     "Preparing memories";
@@ -92,24 +99,16 @@ function showError(message) {
   const state =
     errorTemplate.content.cloneNode(true);
 
-
   const detail =
-    state.querySelector(
-      ".error-detail"
-    );
-
+    state.querySelector(".error-detail");
 
   if (detail) {
     detail.textContent =
       message;
   }
 
-
   const retry =
-    state.querySelector(
-      ".retry-button"
-    );
-
+    state.querySelector(".retry-button");
 
   if (retry) {
 
@@ -117,13 +116,10 @@ function showError(message) {
       "click",
       loadMedia
     );
+
   }
 
-
-  gallery.replaceChildren(
-    state
-  );
-
+  gallery.replaceChildren(state);
 
   memoryCount.textContent =
     "Unable to load";
@@ -131,7 +127,7 @@ function showError(message) {
 
 
 // ============================================================
-// SORTING
+// HAPPINESS SORTING
 // happiness_1 → happiness_15 FIRST
 // ============================================================
 
@@ -142,15 +138,12 @@ function getHappinessNumber(name) {
       /^happiness[_ -]?0*(\d+)/i
     );
 
-
   if (!match) {
     return Infinity;
   }
 
-
   const number =
     Number(match[1]);
-
 
   if (
     number >= 1 &&
@@ -159,7 +152,6 @@ function getHappinessNumber(name) {
     return number;
   }
 
-
   return Infinity;
 }
 
@@ -167,17 +159,13 @@ function getHappinessNumber(name) {
 function sortMedia(a, b) {
 
   const aNumber =
-    getHappinessNumber(
-      a.name
-    );
-
+    getHappinessNumber(a.name);
 
   const bNumber =
-    getHappinessNumber(
-      b.name
-    );
+    getHappinessNumber(b.name);
 
 
+  // happiness_1 to happiness_15
   if (
     aNumber !== Infinity ||
     bNumber !== Infinity
@@ -195,6 +183,7 @@ function sortMedia(a, b) {
   }
 
 
+  // Everything else
   return a.name.localeCompare(
     b.name,
     undefined,
@@ -248,20 +237,46 @@ function createMedia(item) {
       "metadata";
 
 
+    media.setAttribute(
+      "aria-hidden",
+      "true"
+    );
+
+
+    // --------------------------------------------------------
+    // VIDEO DIMENSIONS
+    // --------------------------------------------------------
+
     media.addEventListener(
       "loadedmetadata",
       () => {
+
+        const frame =
+          media.closest(".frame");
+
+
+        if (!frame) {
+          return;
+        }
+
 
         if (
           media.videoWidth &&
           media.videoHeight
         ) {
 
-          media.closest(
-            ".frame"
-          ).style.aspectRatio =
+          frame.style.aspectRatio =
             `${media.videoWidth} / ${media.videoHeight}`;
         }
+
+
+        // IMPORTANT:
+        // Removes the loading/dimmed state
+
+        frame.classList.add(
+          "has-media"
+        );
+
       }
     );
 
@@ -302,20 +317,40 @@ function createMedia(item) {
       "async";
 
 
+    // --------------------------------------------------------
+    // IMAGE LOADED
+    // --------------------------------------------------------
+
     media.addEventListener(
       "load",
       () => {
+
+        const frame =
+          media.closest(".frame");
+
+
+        if (!frame) {
+          return;
+        }
+
 
         if (
           media.naturalWidth &&
           media.naturalHeight
         ) {
 
-          media.closest(
-            ".frame"
-          ).style.aspectRatio =
+          frame.style.aspectRatio =
             `${media.naturalWidth} / ${media.naturalHeight}`;
         }
+
+
+        // IMPORTANT:
+        // Makes the photo full original brightness
+
+        frame.classList.add(
+          "has-media"
+        );
+
       }
     );
 
@@ -331,6 +366,7 @@ function createMedia(item) {
 
       }
     );
+
   }
 
 
@@ -340,7 +376,8 @@ function createMedia(item) {
 
 // ============================================================
 // CREATE FRAME
-// NO FILENAME / NO CAPTION
+// NO FILENAMES
+// NO CAPTIONS
 // ============================================================
 
 function createFrame(
@@ -349,9 +386,7 @@ function createFrame(
 ) {
 
   const section =
-    document.createElement(
-      "section"
-    );
+    document.createElement("section");
 
   section.className =
     "memory";
@@ -364,22 +399,20 @@ function createFrame(
 
 
   const frame =
-    document.createElement(
-      "figure"
-    );
+    document.createElement("figure");
 
   frame.className =
     "frame";
 
 
   const media =
-    createMedia(
-      item
-    );
+    createMedia(item);
 
 
-  // Put ONLY the image/video
-  // inside the frame.
+  // ONLY IMAGE OR VIDEO
+  // No filename
+  // No caption
+  // No video badge
 
   frame.appendChild(
     media
@@ -437,9 +470,12 @@ function setupVideoObserver() {
             } else {
 
               video.pause();
+
             }
+
           }
         );
+
       },
       {
         threshold: [
@@ -457,6 +493,7 @@ function setupVideoObserver() {
       videoObserver.observe(
         video
       );
+
     }
   );
 }
@@ -500,6 +537,7 @@ async function fetchDrivePhotos() {
         "Google Drive HTTP " +
         response.status
       );
+
     }
 
 
@@ -514,16 +552,18 @@ async function fetchDrivePhotos() {
       throw new Error(
         "Invalid Google Drive response"
       );
+
     }
 
 
     return data
+
       .filter(
         item =>
           item &&
-          item.type ===
-          "image"
+          item.type === "image"
       )
+
       .map(
         item => {
 
@@ -531,7 +571,10 @@ async function fetchDrivePhotos() {
             item.src;
 
 
-          if (!src && item.id) {
+          if (
+            !src &&
+            item.id
+          ) {
 
             src =
               "https://drive.google.com/thumbnail?id=" +
@@ -539,10 +582,12 @@ async function fetchDrivePhotos() {
                 item.id
               ) +
               "&sz=w2000";
+
           }
 
 
           return {
+
             name:
               item.name ||
               "image",
@@ -551,19 +596,25 @@ async function fetchDrivePhotos() {
               "image",
 
             src
+
           };
+
         }
       )
+
       .filter(
         item =>
           item.src
       );
 
-  } finally {
+  }
+
+  finally {
 
     clearTimeout(
       timeout
     );
+
   }
 }
 
@@ -590,6 +641,7 @@ async function fetchLocalVideos() {
       "assets2 HTTP " +
       response.status
     );
+
   }
 
 
@@ -604,6 +656,7 @@ async function fetchLocalVideos() {
     throw new Error(
       "Invalid assets2 response"
     );
+
   }
 
 
@@ -612,7 +665,7 @@ async function fetchLocalVideos() {
 
 
 // ============================================================
-// LOAD ALL MEDIA
+// FETCH ALL MEDIA
 // ============================================================
 
 async function fetchMedia() {
@@ -625,40 +678,38 @@ async function fetchMedia() {
 
 
   const photos =
-    results[0].status ===
-    "fulfilled"
+    results[0].status === "fulfilled"
       ? results[0].value
       : [];
 
 
   const localVideos =
-    results[1].status ===
-    "fulfilled"
+    results[1].status === "fulfilled"
       ? results[1].value
       : [];
 
 
   if (
-    results[0].status ===
-    "rejected"
+    results[0].status === "rejected"
   ) {
 
     console.error(
       "Google Drive error:",
       results[0].reason
     );
+
   }
 
 
   if (
-    results[1].status ===
-    "rejected"
+    results[1].status === "rejected"
   ) {
 
     console.error(
       "assets2 error:",
       results[1].reason
     );
+
   }
 
 
@@ -678,7 +729,7 @@ async function fetchMedia() {
 
 
 // ============================================================
-// LOAD PAGE
+// LOAD GALLERY
 // ============================================================
 
 async function loadMedia() {
@@ -729,6 +780,7 @@ async function loadMedia() {
             index
           )
         );
+
       }
     );
 
@@ -749,9 +801,11 @@ async function loadMedia() {
 
     setupVideoObserver();
 
+
   } catch (error) {
 
     console.error(
+      "Gallery error:",
       error
     );
 
@@ -760,18 +814,20 @@ async function loadMedia() {
       error.message
     );
 
+
   } finally {
 
     gallery.setAttribute(
       "aria-busy",
       "false"
     );
+
   }
 }
 
 
 // ============================================================
-// MUTE BUTTON
+// MUTE / UNMUTE
 // ============================================================
 
 muteAll.addEventListener(
@@ -787,6 +843,7 @@ muteAll.addEventListener(
 
         video.muted =
           muted;
+
       }
     );
 
@@ -803,6 +860,7 @@ muteAll.addEventListener(
         muted
           ? "🔇"
           : "🔊";
+
     }
 
 
@@ -812,6 +870,7 @@ muteAll.addEventListener(
         ? "Unmute videos"
         : "Mute videos"
     );
+
   }
 );
 
