@@ -14,8 +14,11 @@ const errorTemplate =
   document.getElementById("errorTemplate");
 
 
+const REQUEST_TIMEOUT_MS = 15000;
+
+
 // ============================================================
-// GOOGLE DRIVE APPS SCRIPT
+// GOOGLE DRIVE
 // ============================================================
 
 const GOOGLE_DRIVE_API =
@@ -23,10 +26,16 @@ const GOOGLE_DRIVE_API =
 
 
 // ============================================================
-// SETTINGS
+// VIDEO FOLDER
 // ============================================================
 
-const REQUEST_TIMEOUT = 15000;
+const VIDEO_FOLDER =
+  "assets2";
+
+
+// ============================================================
+// STATE
+// ============================================================
 
 let videos = [];
 
@@ -36,268 +45,114 @@ let videoObserver = null;
 
 
 // ============================================================
-// DETECT GITHUB
+// BASIC HELPERS
 // ============================================================
 
-function getGitHubInfo() {
+function setBusy(value) {
 
-  const hostname =
-    window.location.hostname;
-
-  // ----------------------------------------------------------
-  // Not GitHub
-  // ----------------------------------------------------------
-
-  if (
-    !hostname.endsWith(
-      "github.io"
-    )
-  ) {
-
-    return null;
-  }
-
-
-  // ----------------------------------------------------------
-  // GitHub Pages
-  //
-  // Example:
-  // username.github.io/repository/
-  // ----------------------------------------------------------
-
-  const username =
-    hostname.split(".")[0];
-
-
-  const parts =
-    window.location.pathname
-      .split("/")
-      .filter(Boolean);
-
-
-  if (!parts.length) {
-
-    // User/organization page
-    return {
-      username,
-      repository:
-        `${username}.github.io`
-    };
-  }
-
-
-  return {
-
-    username,
-
-    repository:
-      parts[0]
-
-  };
+  gallery.setAttribute(
+    "aria-busy",
+    String(value)
+  );
 }
 
 
-// ============================================================
-// GITHUB ASSETS2
-// ============================================================
+function formatCount(count) {
 
-async function fetchGitHubVideos() {
-
-  const github =
-    getGitHubInfo();
-
-
-  // ----------------------------------------------------------
-  // If localhost, don't use GitHub
-  // ----------------------------------------------------------
-
-  if (!github) {
-
-    return [];
-  }
-
-
-  const apiUrl =
-    `https://api.github.com/repos/` +
-    `${encodeURIComponent(github.username)}/` +
-    `${encodeURIComponent(github.repository)}/` +
-    `contents/assets2`;
-
-
-  const response =
-    await fetch(
-      apiUrl,
-      {
-        cache: "no-store"
-      }
-    );
-
-
-  if (!response.ok) {
-
-    throw new Error(
-      "GitHub assets2 HTTP " +
-      response.status
-    );
-  }
-
-
-  const files =
-    await response.json();
-
-
-  if (
-    !Array.isArray(files)
-  ) {
-
-    return [];
-  }
-
-
-  // ----------------------------------------------------------
-  // Only video files
-  // ----------------------------------------------------------
-
-  const videoExtensions = [
-    ".mp4",
-    ".webm",
-    ".mov",
-    ".m4v",
-    ".ogv",
-    ".ogg"
-  ];
-
-
-  return files
-
-    .filter(
-      file =>
-        file.type === "file"
-    )
-
-    .filter(
-      file => {
-
-        const name =
-          file.name.toLowerCase();
-
-        return videoExtensions.some(
-          extension =>
-            name.endsWith(extension)
-        );
-
-      }
-    )
-
-    .map(
-      file => {
-
-        return {
-
-          name:
-            file.name,
-
-          type:
-            "video",
-
-          src:
-            `https://raw.githubusercontent.com/` +
-            `${github.username}/` +
-            `${github.repository}/` +
-            `main/assets2/` +
-            encodeURIComponent(
-              file.name
-            )
-
-        };
-
-      }
-    );
+  return (
+    count +
+    (count === 1
+      ? " memory"
+      : " memories")
+  );
 }
 
 
-// ============================================================
-// LOCAL ASSETS2
-// ============================================================
+function setLoadingState() {
 
-async function fetchLocalVideos() {
+  gallery.replaceChildren();
 
-  const response =
-    await fetch(
-      "/api/videos",
-      {
-        cache:
-          "no-store"
-      }
+  const state =
+    document.createElement(
+      "section"
     );
 
+  state.className =
+    "state-card loading-state";
 
-  if (!response.ok) {
+  state.innerHTML =
+    '<div class="loading-orbit" aria-hidden="true">✦</div>' +
+    '<p class="state-kicker">Just a moment</p>' +
+    "<h2>Loading memories…</h2>" +
+    "<p>Reading the memories.</p>";
 
-    throw new Error(
-      "Local assets2 HTTP " +
-      response.status
-    );
-  }
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !Array.isArray(data)
-  ) {
-
-    return [];
-  }
-
-
-  return data;
-}
-
-
-// ============================================================
-// GET VIDEOS
-// LOCAL OR GITHUB
-// ============================================================
-
-async function fetchVideos() {
-
-  const github =
-    getGitHubInfo();
-
-
-  // ----------------------------------------------------------
-  // GitHub Pages
-  // ----------------------------------------------------------
-
-  if (github) {
-
-    console.log(
-      "Loading videos from GitHub assets2..."
-    );
-
-
-    return await fetchGitHubVideos();
-  }
-
-
-  // ----------------------------------------------------------
-  // Localhost
-  // ----------------------------------------------------------
-
-  console.log(
-    "Loading videos from local assets2..."
+  gallery.appendChild(
+    state
   );
 
+  memoryCount.textContent =
+    "Preparing memories";
+}
 
-  return await fetchLocalVideos();
+
+function showEmptyState() {
+
+  gallery.replaceChildren(
+    emptyTemplate.content.cloneNode(
+      true
+    )
+  );
+
+  memoryCount.textContent =
+    "No memories yet";
+}
+
+
+function showError(message) {
+
+  const errorState =
+    errorTemplate.content.cloneNode(
+      true
+    );
+
+  const detail =
+    errorState.querySelector(
+      ".error-detail"
+    );
+
+  if (detail) {
+    detail.textContent =
+      message;
+  }
+
+
+  const retry =
+    errorState.querySelector(
+      ".retry-button"
+    );
+
+  if (retry) {
+
+    retry.addEventListener(
+      "click",
+      loadMedia
+    );
+
+  }
+
+
+  gallery.replaceChildren(
+    errorState
+  );
+
+  memoryCount.textContent =
+    "Unable to load";
 }
 
 
 // ============================================================
-// HAPPINESS SORTING
+// SORTING
+// happiness_1 → happiness_15 FIRST
 // ============================================================
 
 function getHappinessNumber(name) {
@@ -307,25 +162,19 @@ function getHappinessNumber(name) {
       /^happiness[_ -]?0*(\d+)/i
     );
 
-
   if (!match) {
-
     return Infinity;
   }
 
-
   const number =
     Number(match[1]);
-
 
   if (
     number >= 1 &&
     number <= 15
   ) {
-
     return number;
   }
-
 
   return Infinity;
 }
@@ -334,15 +183,10 @@ function getHappinessNumber(name) {
 function sortMedia(a, b) {
 
   const aNumber =
-    getHappinessNumber(
-      a.name
-    );
-
+    getHappinessNumber(a.name);
 
   const bNumber =
-    getHappinessNumber(
-      b.name
-    );
+    getHappinessNumber(b.name);
 
 
   if (
@@ -360,7 +204,6 @@ function sortMedia(a, b) {
       );
 
     }
-
   }
 
 
@@ -376,133 +219,36 @@ function sortMedia(a, b) {
 
 
 // ============================================================
-// GOOGLE DRIVE PHOTOS
+// CREATE MEDIA FRAME
 // ============================================================
 
-async function fetchDrivePhotos() {
+function addMediaFrame(
+  item,
+  index
+) {
 
-  const controller =
-    new AbortController();
-
-
-  const timeout =
-    setTimeout(
-      () => {
-
-        controller.abort();
-
-      },
-      REQUEST_TIMEOUT
+  const section =
+    document.createElement(
+      "section"
     );
 
+  section.className =
+    "memory";
 
-  try {
-
-    const response =
-      await fetch(
-        GOOGLE_DRIVE_API,
-        {
-          cache:
-            "no-store",
-
-          signal:
-            controller.signal
-        }
-      );
+  section.style.setProperty(
+    "--memory-index",
+    index + 1
+  );
 
 
-    if (!response.ok) {
-
-      throw new Error(
-        "Google Drive HTTP " +
-        response.status
-      );
-    }
-
-
-    const data =
-      await response.json();
-
-
-    if (
-      !Array.isArray(data)
-    ) {
-
-      throw new Error(
-        "Invalid Google Drive response"
-      );
-    }
-
-
-    return data
-
-      .filter(
-        item =>
-          item &&
-          item.type ===
-          "image"
-      )
-
-      .map(
-        item => {
-
-          let src =
-            item.src;
-
-
-          if (
-            !src &&
-            item.id
-          ) {
-
-            src =
-              "https://drive.google.com/thumbnail?id=" +
-              encodeURIComponent(
-                item.id
-              ) +
-              "&sz=w2000";
-
-          }
-
-
-          return {
-
-            name:
-              item.name ||
-              "image",
-
-            type:
-              "image",
-
-            src
-
-          };
-
-        }
-      )
-
-      .filter(
-        item =>
-          item.src
-      );
-
-  }
-
-  finally {
-
-    clearTimeout(
-      timeout
+  const frame =
+    document.createElement(
+      "figure"
     );
 
-  }
-}
+  frame.className =
+    "frame";
 
-
-// ============================================================
-// CREATE MEDIA
-// ============================================================
-
-function createMedia(item) {
 
   const media =
     document.createElement(
@@ -524,8 +270,7 @@ function createMedia(item) {
     item.type === "video"
   ) {
 
-    media.loop =
-      true;
+    media.loop = true;
 
     media.muted =
       muted;
@@ -537,23 +282,20 @@ function createMedia(item) {
       false;
 
     media.preload =
-      "metadata";
+      index < 2
+        ? "auto"
+        : "metadata";
+
+
+    media.setAttribute(
+      "aria-label",
+      item.name
+    );
 
 
     media.addEventListener(
       "loadedmetadata",
       () => {
-
-        const frame =
-          media.closest(
-            ".frame"
-          );
-
-
-        if (!frame) {
-          return;
-        }
-
 
         if (
           media.videoWidth &&
@@ -561,10 +303,22 @@ function createMedia(item) {
         ) {
 
           frame.style.aspectRatio =
-            `${media.videoWidth} / ${media.videoHeight}`;
+            media.videoWidth +
+            " / " +
+            media.videoHeight;
 
+          frame.classList.add(
+            "has-media"
+          );
         }
 
+      }
+    );
+
+
+    media.addEventListener(
+      "canplay",
+      () => {
 
         frame.classList.add(
           "has-media"
@@ -580,9 +334,17 @@ function createMedia(item) {
 
         console.error(
           "Video failed:",
-          item.src
+          item.src,
+          media.error
         );
 
+        frame.classList.add(
+          "media-error"
+        );
+
+      },
+      {
+        once: true
       }
     );
 
@@ -590,6 +352,7 @@ function createMedia(item) {
     videos.push(
       media
     );
+
 
   }
 
@@ -601,10 +364,12 @@ function createMedia(item) {
   else {
 
     media.alt =
-      "";
+      item.name;
 
     media.loading =
-      "lazy";
+      index < 2
+        ? "eager"
+        : "lazy";
 
     media.decoding =
       "async";
@@ -614,31 +379,21 @@ function createMedia(item) {
       "load",
       () => {
 
-        const frame =
-          media.closest(
-            ".frame"
-          );
-
-
-        if (!frame) {
-          return;
-        }
-
-
         if (
           media.naturalWidth &&
           media.naturalHeight
         ) {
 
           frame.style.aspectRatio =
-            `${media.naturalWidth} / ${media.naturalHeight}`;
+            media.naturalWidth +
+            " / " +
+            media.naturalHeight;
+
+          frame.classList.add(
+            "has-media"
+          );
 
         }
-
-
-        frame.classList.add(
-          "has-media"
-        );
 
       }
     );
@@ -653,67 +408,23 @@ function createMedia(item) {
           item.src
         );
 
+      },
+      {
+        once: true
       }
     );
 
   }
 
 
-  return media;
-}
-
-
-// ============================================================
-// CREATE FRAME
-// ============================================================
-
-function createFrame(
-  item,
-  index
-) {
-
-  const section =
-    document.createElement(
-      "section"
-    );
-
-
-  section.className =
-    "memory";
-
-
-  section.style.setProperty(
-    "--memory-index",
-    index + 1
-  );
-
-
-  const frame =
-    document.createElement(
-      "figure"
-    );
-
-
-  frame.className =
-    "frame";
-
-
-  const media =
-    createMedia(
-      item
-    );
-
-
-  // ONLY MEDIA
-  //
-  // No filename
-  // No caption
-  // No label
-
   frame.appendChild(
     media
   );
 
+
+  // ==========================================================
+  // DO NOT SHOW FILE NAMES
+  // ==========================================================
 
   section.appendChild(
     frame
@@ -738,17 +449,17 @@ function setupVideoObserver() {
 
 
   if (!videos.length) {
-
     return;
   }
 
 
   videoObserver =
     new IntersectionObserver(
-      entries => {
+
+      (entries) => {
 
         entries.forEach(
-          entry => {
+          (entry) => {
 
             const video =
               entry.target;
@@ -765,9 +476,7 @@ function setupVideoObserver() {
                   () => {}
                 );
 
-            }
-
-            else {
+            } else {
 
               video.pause();
 
@@ -777,6 +486,7 @@ function setupVideoObserver() {
         );
 
       },
+
       {
         threshold: [
           0,
@@ -784,11 +494,12 @@ function setupVideoObserver() {
           1
         ]
       }
+
     );
 
 
   videos.forEach(
-    video => {
+    (video) => {
 
       videoObserver.observe(
         video
@@ -800,46 +511,398 @@ function setupVideoObserver() {
 
 
 // ============================================================
-// GET ALL MEDIA
+// LOAD GOOGLE DRIVE PHOTOS
+// ============================================================
+
+async function fetchDrivePhotos() {
+
+  const controller =
+    new AbortController();
+
+
+  const timeout =
+    window.setTimeout(
+      () =>
+        controller.abort(),
+      REQUEST_TIMEOUT_MS
+    );
+
+
+  try {
+
+    const response =
+      await fetch(
+        GOOGLE_DRIVE_API,
+        {
+          cache: "no-store",
+          signal: controller.signal
+        }
+      );
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        "Google Drive API returned HTTP " +
+        response.status
+      );
+
+    }
+
+
+    const media =
+      await response.json();
+
+
+    if (
+      !Array.isArray(media)
+    ) {
+
+      throw new Error(
+        "Google Drive API returned invalid data."
+      );
+
+    }
+
+
+    return media
+
+      .filter(
+        item =>
+          item.type === "image"
+      )
+
+      .map(
+        item => {
+
+          if (item.src) {
+            return item;
+          }
+
+
+          return {
+
+            ...item,
+
+            src:
+              "https://drive.google.com/thumbnail?id=" +
+              encodeURIComponent(
+                item.id
+              ) +
+              "&sz=w2000"
+
+          };
+
+        }
+      );
+
+
+  } finally {
+
+    window.clearTimeout(
+      timeout
+    );
+
+  }
+}
+
+
+// ============================================================
+// GET GITHUB PAGE INFORMATION
+// ============================================================
+
+function getGitHubPageInfo() {
+
+  const host =
+    window.location.hostname;
+
+
+  if (
+    !host.endsWith(
+      ".github.io"
+    )
+  ) {
+
+    return null;
+
+  }
+
+
+  const owner =
+    host.split(".")[0];
+
+
+  const parts =
+    window.location.pathname
+      .split("/")
+      .filter(Boolean);
+
+
+  let basePath = "";
+
+
+  // Project GitHub Pages
+  //
+  // username.github.io/repository/
+  //
+
+  if (parts.length > 0) {
+
+    basePath =
+      "/" +
+      parts[0];
+
+  }
+
+
+  return {
+    owner,
+    basePath
+  };
+}
+
+
+// ============================================================
+// LOAD VIDEOS FROM LOCAL assets2
+// ============================================================
+
+async function fetchLocalVideos() {
+
+  const response =
+    await fetch(
+      "/api/videos",
+      {
+        cache: "no-store"
+      }
+    );
+
+
+  if (!response.ok) {
+
+    throw new Error(
+      "Local video API returned HTTP " +
+      response.status
+    );
+
+  }
+
+
+  const data =
+    await response.json();
+
+
+  if (!Array.isArray(data)) {
+
+    throw new Error(
+      "Local video API returned invalid data."
+    );
+
+  }
+
+
+  return data;
+}
+
+
+// ============================================================
+// LOAD VIDEOS FROM GITHUB PAGES
+// ============================================================
+
+async function fetchGitHubVideos() {
+
+  const pageInfo =
+    getGitHubPageInfo();
+
+
+  if (!pageInfo) {
+
+    return [];
+
+  }
+
+
+  const apiURL =
+    "https://api.github.com/repos/" +
+    encodeURIComponent(
+      pageInfo.owner
+    ) +
+    "/" +
+    encodeURIComponent(
+      getRepositoryName(pageInfo)
+    ) +
+    "/contents/" +
+    VIDEO_FOLDER;
+
+
+  const response =
+    await fetch(
+      apiURL,
+      {
+        headers: {
+          "Accept":
+            "application/vnd.github+json"
+        },
+
+        cache: "no-store"
+      }
+    );
+
+
+  if (!response.ok) {
+
+    throw new Error(
+      "GitHub returned HTTP " +
+      response.status
+    );
+
+  }
+
+
+  const files =
+    await response.json();
+
+
+  if (!Array.isArray(files)) {
+
+    return [];
+
+  }
+
+
+  return files
+
+    .filter(
+      file => {
+
+        if (
+          file.type !==
+          "file"
+        ) {
+
+          return false;
+
+        }
+
+
+        const name =
+          file.name.toLowerCase();
+
+
+        return (
+          name.endsWith(".mp4") ||
+          name.endsWith(".webm") ||
+          name.endsWith(".mov") ||
+          name.endsWith(".m4v") ||
+          name.endsWith(".ogv") ||
+          name.endsWith(".ogg")
+        );
+
+      }
+    )
+
+    .map(
+      file => {
+
+        return {
+
+          name:
+            file.name,
+
+          type:
+            "video",
+
+          src:
+            pageInfo.basePath +
+            "/" +
+            VIDEO_FOLDER +
+            "/" +
+            encodeURIComponent(
+              file.name
+            )
+
+        };
+
+      }
+    );
+}
+
+
+// ============================================================
+// FIND GITHUB REPOSITORY NAME
+// ============================================================
+
+function getRepositoryName(
+  pageInfo
+) {
+
+  const parts =
+    window.location.pathname
+      .split("/")
+      .filter(Boolean);
+
+
+  // Project site:
+  //
+  // username.github.io/repository/
+  //
+
+  if (parts.length > 0) {
+
+    return parts[0];
+
+  }
+
+
+  // User site:
+  //
+  // username.github.io/
+  //
+
+  return (
+    pageInfo.owner +
+    ".github.io"
+  );
+}
+
+
+// ============================================================
+// LOAD ALL MEDIA
 // ============================================================
 
 async function fetchMedia() {
 
-  // ----------------------------------------------------------
-  // Load photos and videos at same time
-  // ----------------------------------------------------------
+  const isLocal =
+    window.location.hostname ===
+      "localhost" ||
+    window.location.hostname ===
+      "127.0.0.1";
+
 
   const results =
     await Promise.allSettled([
 
       fetchDrivePhotos(),
 
-      fetchVideos()
+      isLocal
+        ? fetchLocalVideos()
+        : fetchGitHubVideos()
 
     ]);
 
 
   const photos =
     results[0].status ===
-    "fulfilled"
-
+      "fulfilled"
       ? results[0].value
-
       : [];
 
 
-  const videoList =
+  const videosFromSource =
     results[1].status ===
-    "fulfilled"
-
+      "fulfilled"
       ? results[1].value
-
       : [];
 
-
-  // ----------------------------------------------------------
-  // Errors
-  // ----------------------------------------------------------
 
   if (
     results[0].status ===
@@ -847,7 +910,7 @@ async function fetchMedia() {
   ) {
 
     console.error(
-      "Google Drive error:",
+      "Google Drive photos failed:",
       results[0].reason
     );
 
@@ -860,50 +923,24 @@ async function fetchMedia() {
   ) {
 
     console.error(
-      "Video loading error:",
+      "Videos failed:",
       results[1].reason
     );
 
   }
 
 
-  // ----------------------------------------------------------
-  // Combine
-  // ----------------------------------------------------------
-
   const allMedia = [
 
     ...photos,
 
-    ...videoList
+    ...videosFromSource
 
   ];
 
 
-  // ----------------------------------------------------------
-  // Sort
-  // ----------------------------------------------------------
-
   allMedia.sort(
     sortMedia
-  );
-
-
-  console.log(
-    "Total media:",
-    allMedia.length
-  );
-
-
-  console.log(
-    "Photos:",
-    photos.length
-  );
-
-
-  console.log(
-    "Videos:",
-    videoList.length
   );
 
 
@@ -912,7 +949,7 @@ async function fetchMedia() {
 
 
 // ============================================================
-// LOAD GALLERY
+// LOAD PAGE
 // ============================================================
 
 async function loadMedia() {
@@ -927,13 +964,24 @@ async function loadMedia() {
   videos = [];
 
 
-  gallery.setAttribute(
-    "aria-busy",
-    "true"
-  );
+  setBusy(true);
+
+  setLoadingState();
 
 
-  showLoading();
+  if (
+    window.location.protocol ===
+    "file:"
+  ) {
+
+    showError(
+      "Please open the website through localhost:3000, not directly from the HTML file."
+    );
+
+    setBusy(false);
+
+    return;
+  }
 
 
   try {
@@ -942,25 +990,24 @@ async function loadMedia() {
       await fetchMedia();
 
 
-    if (
-      media.length === 0
-    ) {
+    if (!media.length) {
 
-      showEmpty();
+      showEmptyState();
 
       return;
+
     }
 
 
-    const fragment =
+    const memories =
       document.createDocumentFragment();
 
 
     media.forEach(
       (item, index) => {
 
-        fragment.appendChild(
-          createFrame(
+        memories.appendChild(
+          addMediaFrame(
             item,
             index
           )
@@ -971,97 +1018,98 @@ async function loadMedia() {
 
 
     gallery.replaceChildren(
-      fragment
+      memories
     );
 
 
     memoryCount.textContent =
-      media.length +
-      (
-        media.length === 1
-          ? " memory"
-          : " memories"
+      formatCount(
+        media.length
       );
 
 
     setupVideoObserver();
 
 
-  }
-
-  catch (error) {
+  } catch (error) {
 
     console.error(
-      "Gallery error:",
+      "Unable to load gallery:",
       error
     );
 
 
     showError(
-      error.message
+      error.message ||
+      "Could not load the memories."
     );
 
-  }
 
-  finally {
+  } finally {
 
-    gallery.setAttribute(
-      "aria-busy",
-      "false"
-    );
+    setBusy(false);
 
   }
 }
 
 
 // ============================================================
-// MUTE BUTTON
+// MUTE / UNMUTE
 // ============================================================
 
-muteAll.addEventListener(
-  "click",
-  () => {
+if (muteAll) {
 
-    muted =
-      !muted;
+  muteAll.addEventListener(
+    "click",
+    () => {
 
-
-    videos.forEach(
-      video => {
-
-        video.muted =
-          muted;
-
-      }
-    );
+      muted =
+        !muted;
 
 
-    const icon =
-      muteAll.querySelector(
-        "span"
+      videos.forEach(
+        (video) => {
+
+          video.muted =
+            muted;
+
+        }
       );
 
 
-    if (icon) {
+      const icon =
+        muteAll.querySelector(
+          "span"
+        );
 
-      icon.textContent =
+
+      if (icon) {
+
+        icon.textContent =
+          muted
+            ? "🔇"
+            : "🔊";
+
+      }
+
+
+      muteAll.setAttribute(
+        "aria-label",
         muted
-          ? "🔇"
-          : "🔊";
+          ? "Unmute videos"
+          : "Mute videos"
+      );
+
+
+      muteAll.title =
+        muted
+          ? "Unmute videos"
+          : "Mute videos";
 
     }
+  );
 
-
-    muteAll.setAttribute(
-      "aria-label",
-
-      muted
-        ? "Unmute videos"
-        : "Mute videos"
-    );
-
-  }
-);
+}
 
 
 // ============================================================
